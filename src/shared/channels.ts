@@ -36,6 +36,12 @@ export const CH = {
   /** 把会话的落盘目录搬到另一个工作目录下（grok 没有「改会话工作目录」的接口，只能搬目录） */
   sessionMoveData: 'session:move-data',
   screenshotSnip: 'app:screenshot-snip',
+  /** 截图叠层：主进程把冻屏 data URL 推给覆盖窗 */
+  snipImage: 'snip:image',
+  /** 覆盖窗画完冻屏后回一声，主进程再 show，避免黑帧 */
+  snipPainted: 'snip:painted',
+  snipConfirm: 'snip:confirm',
+  snipCancel: 'snip:cancel',
   /**
    * 截取当前窗口某一矩形区域为 PNG（DIP 坐标，相对窗口客户区）。
    * 给会话「长截屏」滚屏拼图用。
@@ -142,7 +148,7 @@ export const CH = {
   toastPermissionDecide: 'toast:permission-decide',
   /** 桌面授权浮窗：用户点 × 仅关闭（不代替授权决定） */
   toastPermissionDismiss: 'toast:permission-dismiss',
-  /** 桌面授权浮窗：用户点「打开应用」 */
+  /** 桌面授权浮窗：用户点「前往处理」，唤起主窗口并切到该会话 */
   toastOpenApp: 'toast:open-app',
   /** 渲染层汇报当前正在看的会话（用于：看该会话时自动收起桌面浮窗） */
   reportActiveSession: 'ui:report-active-session',

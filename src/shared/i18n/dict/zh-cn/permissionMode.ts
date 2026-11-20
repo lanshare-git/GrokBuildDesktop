@@ -17,10 +17,6 @@ export const permissionMode = {
   },
   dontAsk: {
     label: '仅允许列表',
-    desc: '只有 allow 规则内的工具免询问，适合严格管控场景'
-  },
-  plan: {
-    label: '计划模式',
-    desc: '兼容占位模式（Claude 兼容设置使用）'
+    desc: '只有 allow 规则内的工具免询问，其余直接拒绝'
   }
 }

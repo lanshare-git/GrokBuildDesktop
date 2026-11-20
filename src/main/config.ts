@@ -36,7 +36,8 @@ export interface AppConfig {
   deleteDiskFilesByDefault: boolean
   /**
    * 屏幕右下角桌面授权浮窗：
-   *  - 'on'：后台或其它会话有待授权时弹出（默认）
+   *  - 'on'：还没在主窗口看过的待授权会弹出（默认）：其它会话，或窗口已在后台时到来。
+   *    主窗口里已经看过的请求，切应用、最小化、藏托盘都不再弹。
    *  - 'off'：不弹（只靠会话内联 + 侧栏色点）
    * 旧值 'background' 读入时归一为 'on'。
    */

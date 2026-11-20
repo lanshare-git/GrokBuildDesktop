@@ -119,8 +119,7 @@ export const panels = {
     quotaResetHours: (vars: { hours: number }) => `${vars.hours} 小时后重置`,
     quotaDescFallback: '数据来自 grok 账号服务（等同终端 /usage 的 Usage limit 页）',
     quotaLoading: '正在读取额度…',
-    quotaUnavailable: (vars: { error: string }) =>
-      `额度信息暂不可用${vars.error ? `（${vars.error}）` : ''}。未登录或网络不通时读不到；代理需在「环境自检」里可用。`,
+    quotaUnavailable: '额度信息暂不可用。未登录或网络不通时读不到；代理需在「环境自检」里可用。',
     quotaUsed: (vars: { period: string }) => `${vars.period}已用`,
     quotaRemaining: (vars: { percent: string }) => `剩余 ${vars.percent}%`,
     quotaPrepaid: (vars: { balance: string }) => `预付余额 ${vars.balance}`,

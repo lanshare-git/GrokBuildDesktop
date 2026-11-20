@@ -19,10 +19,6 @@ export const permissionMode: typeof zh = {
   },
   dontAsk: {
     label: '許可リストのみ',
-    desc: 'allow ルール内のツールのみ確認をスキップ。厳格な管理向け'
-  },
-  plan: {
-    label: 'プランモード',
-    desc: '互換性のためのプレースホルダーモード（Claude 互換設定用）'
+    desc: 'allow ルール内のツールだけ確認をスキップし、それ以外は拒否します'
   }
 }

@@ -19,7 +19,7 @@ export const header: typeof zh = {
     `現在の作業ディレクトリ：${vars.cwd}\nクリックで既存のワークスペースから切り替えるか、別のディレクトリを開けます。切り替え後は「新規」タスクが作成され、現在のセッションは変わりません\nこのセッション自身のディレクトリを変えるには：左側セッション行の「☰」メニューから「作業ディレクトリへ移動」を選択（生成中のセッションは移動できません）`,
   model: 'モデル',
   effort: '推論の強度',
-  modeTitleLocked: 'チャットセッションは読み取り専用（プランモード）にロックされており、変更できません',
+  modeTitleLocked: 'チャットセッションは読み取り専用（許可リストのみ）にロックされており、変更できません',
   modeTitleChat: 'このセッションはチャットから移動されました。通常タスクと同様に権限モードを切り替えられます',
   modeTitle: (vars: { desc: string }) => `権限モード · ${vars.desc}`,
   usageTitle: (vars: { input: number; output: number; cacheRead: number }) =>

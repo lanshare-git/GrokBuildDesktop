@@ -19,7 +19,7 @@ export const header: typeof zh = {
     `Working directory: ${vars.cwd}\nClick to switch from existing workspaces or open another directory; switching CREATES a new task, the current session stays unchanged\nTo change this session's own directory: use "Move to working directory" in the "☰" menu on the session row (sessions currently generating cannot be moved)`,
   model: 'Model',
   effort: 'Reasoning effort',
-  modeTitleLocked: 'Chat session is locked read-only (plan mode) and cannot be changed',
+  modeTitleLocked: 'Chat session is locked read-only (allow-list only) and cannot be changed',
   modeTitleChat: 'This session was moved from a chat; permission mode can be switched like a normal task',
   modeTitle: (vars: { desc: string }) => `Permission mode · ${vars.desc}`,
   usageTitle: (vars: { input: number; output: number; cacheRead: number }) =>

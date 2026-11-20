@@ -25,8 +25,7 @@ export const prompts = {
   },
   toast: {
     reconnect: '重新连接',
-    goHandle: '前往处理',
-    /** 桌面授权浮窗：可选唤起主窗口 */
-    openApp: '打开应用'
+    /** 应用内提示与右下角授权浮窗共用：切到待处理的那条会话 */
+    goHandle: '前往处理'
   }
 }

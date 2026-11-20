@@ -294,6 +294,32 @@ pre {
   padding: 5px 8px 5px 6px;
 }
 
+/* 超出默认条数后的「更多 / 收起」。左缘与会话行对齐，chevron 落在状态点的位置。 */
+.ws-more {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 4px 8px 4px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.ws-more:hover {
+  background: #e9ebef;
+  color: var(--text-secondary);
+}
+.ws-more:hover .ws-caret {
+  color: var(--text-secondary);
+}
+
 .ws-hint {
   font-size: 11.5px;
   line-height: 1.5;
@@ -350,7 +376,7 @@ pre {
   gap: 8px;
 }
 
-/* 左侧状态点（对齐 Cursor）：橙=等你 / 转圈=输出中 / 蓝=做完未读 / 灰=空闲 */
+/* 左侧状态点（对齐 Cursor）：橙=等你 / 转圈=输出中 / 空心=还没发出 / 蓝=做完未读 / 灰=空闲 */
 .session-dot {
   flex: none;
   width: 8px;
@@ -368,6 +394,11 @@ pre {
   border-top-color: var(--text);
   box-shadow: none;
   animation: dot-spin 0.75s linear infinite;
+}
+.session-dot.status-draft {
+  background: transparent;
+  border: 1.5px solid var(--text-muted);
+  opacity: 0.7;
 }
 .session-dot.status-unread {
   background: var(--accent);
@@ -950,6 +981,17 @@ pre {
 .chip-path {
   font-family: var(--font-mono);
   font-size: 11.5px;
+  direction: ltr;
+  cursor: pointer;
+}
+.chip-path > svg {
+  flex: none;
+}
+/* 路径过长时从头部省略，保住末尾的项目目录名；图标保持在左侧 */
+.chip-path-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   direction: rtl;
   text-align: left;
 }
@@ -2197,6 +2239,17 @@ pre {
   white-space: nowrap;
 }
 
+/* 当前项目：贴在输入框正上方，与输入框同宽左对齐 */
+.composer-cwd {
+  max-width: 820px;
+  margin: 0 auto 8px;
+  display: flex;
+  min-width: 0;
+}
+.composer-cwd .chip-path {
+  max-width: min(100%, 560px);
+}
+
 .composer-box {
   max-width: 820px;
   margin: 0 auto;
@@ -3264,6 +3317,7 @@ a.msg-media-link:hover {
 }
 .settings-content {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -3279,6 +3333,8 @@ a.msg-media-link:hover {
 }
 .settings-content-body {
   flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 24px 28px;
 }
@@ -3291,6 +3347,7 @@ a.msg-media-link:hover {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
 }
 .settings-page-title {
   font-size: 17px;
@@ -3301,6 +3358,7 @@ a.msg-media-link:hover {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: -8px;
+  overflow-wrap: anywhere;
 }
 
 /* 原 drawer 内嵌进设置中心时的覆盖：去掉抽屉自身的滚动与内边距，交给 settings-content */
@@ -3323,6 +3381,7 @@ a.msg-media-link:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 4px 16px;
+  min-width: 0;
 }
 .settings-row {
   display: flex;
@@ -3349,6 +3408,7 @@ a.msg-media-link:hover {
 .settings-row-desc {
   font-size: 11.5px;
   color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 /* 关于分区内嵌：品牌头去掉原弹窗的边距 */
@@ -3874,6 +3934,23 @@ a.msg-media-link:hover {
   font-size: 12px;
   color: var(--text-muted);
   padding: 6px 0 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.usage-empty-error {
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
 .usage-block {
@@ -4245,7 +4322,7 @@ a.msg-media-link:hover {
   flex-shrink: 0;
   border-top: 1px solid var(--border);
   background: var(--bg);
-  padding: 14px 28px 0;
+  padding: 8px 28px 0;
 }
 /* 面板在场时不要再叠一条输入框自带的上边框，否则看着是双线 */
 .task-prompt + .composer {
@@ -4271,6 +4348,39 @@ a.msg-media-link:hover {
 /* 待授权 / 待回答：橙 = 等你处理（与侧栏 pending 同色，对齐 Cursor） */
 .prompt-card-perm {
   border-left-color: var(--warn);
+  padding: 8px 12px;
+}
+.prompt-card-perm .prompt-head {
+  margin-bottom: 2px;
+}
+/* 说明始终一行：长脚本走下面的预览，不在这里换行撑高 */
+.prompt-card-perm .prompt-sub {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+.prompt-card-perm .prompt-sub-lead {
+  flex: none;
+}
+.prompt-card-perm .prompt-sub strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prompt-card-perm .inline-code {
+  flex: none;
+}
+.prompt-card-perm .prompt-pre {
+  max-height: 4.5em;
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  line-height: 1.45;
+}
+.prompt-card-perm .prompt-actions .btn {
+  padding: 4px 10px;
+  font-size: 12px;
 }
 .prompt-card-question {
   border-left-color: var(--warn);

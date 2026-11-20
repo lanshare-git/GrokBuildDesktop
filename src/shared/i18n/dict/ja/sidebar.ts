@@ -14,6 +14,8 @@ export const sidebar: typeof zh = {
   noSessions: 'まだセッションがありません',
   noChats: 'まだチャットがありません',
   newHere: 'ここで新規作成',
+  moreSessions: (vars: { n: number }) => `ほか ${vars.n} 件`,
+  collapseSessions: '折りたたむ',
   homeGroupTitle: (vars: { path: string }) =>
     `チャット：常にホームディレクトリをルートとし、どのプロジェクトにも紐付けません\n${vars.path}\nクリックで折りたたみ / 展開`,
   groupTitle: (vars: { path: string; alias: string }) =>
@@ -26,6 +28,7 @@ export const sidebar: typeof zh = {
   removeFromList: '作業ディレクトリ一覧から削除',
   statusRunning: '生成中',
   statusPending: '応答が必要です',
+  statusDraft: '未送信',
   statusUnread: '完了（未読）',
   statusDone: 'アイドル',
   tagRunning: '生成中',
@@ -116,7 +119,7 @@ export const sidebar: typeof zh = {
     moveDetail:
       'ディスク上のセッション記録は全履歴ごと移動され、以降このセッションは新しいディレクトリで実行されます。ツール実行、ファイルの読み書き、grok のワークスペースメモリはすべて新しいディレクトリをルートとします。',
     moveChatWarn:
-      'これは純粋なチャットセッションです（元は読み取り専用に固定）。プロジェクトディレクトリに移動すると通常のタスクと同じになり、権限モードを自分で切り替えられます。読み取り専用を続けるには、移動後に右上で「計画モード」に戻してください。',
+      'これは純粋なチャットセッションです（元は読み取り専用に固定）。プロジェクトディレクトリに移動すると通常のタスクと同じになり、権限モードを自分で切り替えられます。読み取り専用を続けるには、移動後に右上で「許可リストのみ」を選んでください。',
     moveActiveNote: '現在開いているセッションです。移動後に新しいディレクトリで自動的に再読み込みされます。',
     move: '移動'
   },

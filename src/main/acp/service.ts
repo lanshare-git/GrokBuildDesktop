@@ -14,11 +14,13 @@ import { join } from 'node:path'
 import { AcpClient } from './client'
 import { proxyEnv, readConfig } from '../config'
 import { t } from '../i18n'
+import { coercePermissionMode } from '../../shared/types'
 import type {
   AcpToolCall,
   AvailableCommand,
   ConnectionState,
   GrokAnnouncement,
+  ConfigOption,
   InitializeResult,
   NewSessionOptions,
   PermissionMode,
@@ -488,7 +490,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     await this.start()
     const client = this.requireClient()
 
-    const mode = options.permissionMode ?? this.permissionModeDefault
+    const mode = coercePermissionMode(options.permissionMode ?? this.permissionModeDefault)
     const meta: Record<string, unknown> = {}
     // bypassPermissions 可在创建时经 _meta.yoloMode 直接带上；
     // 其余模式 session/new 不识别，创建后再用 session/set_mode 切换（见下方）
@@ -504,19 +506,25 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
 
     if (options.model) {
       try {
-        await this.setConfigOption(result.sessionId, 'model', options.model)
+        const updated = await this.setConfigOption(result.sessionId, 'model', options.model)
+        if (updated.configOptions) result.configOptions = updated.configOptions
       } catch (err) {
         this.log(`[config] 设置模型失败：${(err as Error).message}`)
       }
     }
     if (options.reasoningEffort) {
       try {
-        await this.setConfigOption(result.sessionId, 'reasoning_effort', options.reasoningEffort)
+        const updated = await this.setConfigOption(
+          result.sessionId,
+          'reasoning_effort',
+          options.reasoningEffort
+        )
+        if (updated.configOptions) result.configOptions = updated.configOptions
       } catch (err) {
         this.log(`[config] 设置推理强度失败：${(err as Error).message}`)
       }
     }
-    // 非 bypass 模式（default/auto/acceptEdits/dontAsk/plan）创建时不带 yoloMode，
+    // 非 bypass 模式（default/auto/acceptEdits/dontAsk）创建时不带 yoloMode，
     // 这里立即切到目标模式。bypassPermissions 已由 yoloMode 带上，无需重复切换。
     if (mode !== 'bypassPermissions') {
       try {
@@ -688,12 +696,15 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     sessionId: string,
     configId: string,
     value: string
-  ): Promise<unknown> {
+  ): Promise<{ configOptions?: ConfigOption[] }> {
     const client = this.requireClient()
+    // select 的值是 id。type 与 value 必须并列；包成 { value } 时
+    // 当前 grok 会拒收 SessionConfigOptionValue（Invalid params）。
     return client.request('session/set_config_option', {
       sessionId,
       configId,
-      value: { value }
+      type: 'id',
+      value
     })
   }
 
@@ -705,7 +716,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    */
   async setPermissionMode(sessionId: string, modeId: string): Promise<void> {
     const client = this.requireClient()
-    await client.request('session/set_mode', { sessionId, modeId })
+    // plan 是占位模式，不拦截写文件。旧界面或旧持久化仍可能传来，改送 dontAsk。
+    const resolved = modeId === 'plan' ? 'dontAsk' : modeId
+    await client.request('session/set_mode', { sessionId, modeId: resolved })
   }
 
   /**

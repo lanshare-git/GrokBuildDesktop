@@ -17,6 +17,8 @@
  *   build/icons/{size}x{size}.png  Linux deb 桌面图标集（16…512）
  *   build/tray-*.png            32×32 托盘三态（ok 绿 / attention 黄 / error 红）
  *   build/taskbar-badge-*.png   16×16 任务栏角标（unread 蓝 / pending 橙，对齐 Cursor）
+ *                                 只在画布中央画一颗小点：Win11 会把整张图贴在图标左上，
+ *                                 铺满的圆会盖住标志
  *
  * ⚠️ 这些文件是「生成物」，但必须提交进仓库：
  *   dev 模式（npm run dev）不走打包，src/main/index.ts / src/main/tray.ts 开发态直接读
@@ -293,16 +295,21 @@ function trayOutputs() {
 }
 
 /**
- * 任务栏 overlay 角标：透明底 + 带深色描边的实心圆。
- * Windows `setOverlayIcon` 常用 16×16；描边保证浅色任务栏上也能看见。
+ * 任务栏 overlay 角标：透明底 + 中央一颗小圆点。
+ *
+ * Windows 把整张 16×16 贴到任务栏图标角上（Win11 未合并按钮时在左上，不是右下）。
+ * 圆若铺满画布，就会变成盖住标志的大色块。所以只画大约一半尺寸的点。
+ * 描边用浅色：深色描边会融进黑色图标，看起来像色块直接粘在标志上。
+ * 蓝/橙填充本身在浅色任务栏上已经看得见。
  */
 function drawOverlayBadge(size, rgb) {
-  const SS = 4
+  const SS = 8
   const cx = size / 2 - 0.5
   const cy = size / 2 - 0.5
-  const rFill = size * 0.34
-  const rRing = size * 0.42
-  const ring = [26, 28, 33]
+  // 色点约占画布四成，浅色描边约 1px。再大就会盖住标志。
+  const rFill = size * 0.20
+  const rRing = size * 0.27
+  const ring = [255, 255, 255]
   const out = Buffer.alloc(size * size * 4)
 
   for (let y = 0; y < size; y++) {

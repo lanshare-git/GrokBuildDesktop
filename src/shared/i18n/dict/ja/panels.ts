@@ -117,8 +117,8 @@ export const panels: typeof zh = {
     quotaResetHours: (vars) => `${vars.hours} 時間後にリセット`,
     quotaDescFallback: 'データは grok アカウントサービスより（ターミナルの /usage の Usage limit ページと同等）',
     quotaLoading: '利用枠を読み込み中…',
-    quotaUnavailable: (vars) =>
-      `利用枠情報を取得できません${vars.error ? `（${vars.error}）` : ''}。未ログインまたはネットワーク不通の場合は取得できません。プロキシは「環境セルフチェック」で有効である必要があります。`,
+    quotaUnavailable:
+      '利用枠情報を取得できません。未ログインまたはネットワーク不通の場合は取得できません。プロキシは「環境セルフチェック」で有効である必要があります。',
     quotaUsed: (vars) => `${vars.period}使用済み`,
     quotaRemaining: (vars) => `残り ${vars.percent}%`,
     quotaPrepaid: (vars) => `前払い残高 ${vars.balance}`,

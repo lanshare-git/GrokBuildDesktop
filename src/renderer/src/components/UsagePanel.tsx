@@ -112,7 +112,8 @@ function QuotaBlock({
       {loading && <div className="usage-loading">{t('panels.usage.quotaLoading')}</div>}
       {!loading && !quota && (
         <div className="usage-empty">
-          {t('panels.usage.quotaUnavailable', { error })}
+          <div>{t('panels.usage.quotaUnavailable')}</div>
+          {error ? <div className="usage-empty-error">{error}</div> : null}
         </div>
       )}
 

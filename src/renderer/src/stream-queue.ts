@@ -14,7 +14,6 @@
  */
 
 import { useStore } from './store'
-import { noteTurnActivity } from './turn-idle'
 import type { AcpStreamEvent } from '@shared/types'
 
 let streamQueue: AcpStreamEvent[] = []
@@ -57,15 +56,6 @@ let batchWaitStartedAt = 0
 function applyBatch(events: AcpStreamEvent[]): void {
   // 必须走批量接口：逐条 set 会把 persist 的全量序列化放大成数百次
   useStore.getState().applyStreamBatch(events)
-  // 实时回合：任意 update 都算「还在干活」，重置空闲自动打断计时
-  const seen = new Set<string>()
-  for (const e of events) {
-    if (seen.has(e.sessionId)) continue
-    seen.add(e.sessionId)
-    if (!useStore.getState().reloadingSessions.includes(e.sessionId)) {
-      noteTurnActivity(e.sessionId)
-    }
-  }
 }
 
 function scheduleNextFlush(): void {

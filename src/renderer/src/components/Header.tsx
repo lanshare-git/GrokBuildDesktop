@@ -1,13 +1,16 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { applyPermissionModeToSession, changeConfigOption } from '../actions'
 import { useLocale, useT } from '../i18n'
 import { useStore } from '../store'
 import { formatNumber, isLockedChat, sessionDisplayTitle } from '../utils'
 import type { PermissionMode } from '@shared/types'
-import { PERMISSION_MODE_OPTIONS } from '@shared/types'
-import DirPickerMenu from './DirPickerMenu'
-import { IconFolder, IconGauge } from './Icons'
+import {
+  LOCKED_CHAT_PERMISSION_MODE,
+  PERMISSION_MODE_OPTIONS,
+  coercePermissionMode
+} from '@shared/types'
+import { IconGauge } from './Icons'
 
 export default function Header(): JSX.Element {
   const t = useT()
@@ -24,9 +27,6 @@ export default function Header(): JSX.Element {
 
   const [renaming, setRenaming] = useState(false)
   const [draft, setDraft] = useState('')
-  /** 路径 chip：切换工作目录（先列已有，再「打开其他目录」） */
-  const [cwdMenuOpen, setCwdMenuOpen] = useState(false)
-  const pathChipRef = useRef<HTMLButtonElement | null>(null)
 
   if (!session) return <div className="header" />
 
@@ -35,8 +35,10 @@ export default function Header(): JSX.Element {
   // 只读锁定只对「还在主目录下的纯聊天会话」生效：搬到项目目录后就已经绑定项目，
   // 该和普通任务一样可以自选权限模式（见 utils.isLockedChat 的说明）
   const locked = isLockedChat(session, homeDir)
-  const effectiveMode: PermissionMode = locked ? 'plan' : permissionMode
-  const modeDescKey = PERMISSION_MODE_OPTIONS.find((m) => m.value === permissionMode)?.descKey
+  const effectiveMode: PermissionMode = locked
+    ? LOCKED_CHAT_PERMISSION_MODE
+    : coercePermissionMode(permissionMode)
+  const modeDescKey = PERMISSION_MODE_OPTIONS.find((m) => m.value === effectiveMode)?.descKey
 
   const startRename = (): void => {
     // 预填「当前显示名」，不必重打一遍
@@ -94,22 +96,6 @@ export default function Header(): JSX.Element {
             {title}
           </div>
         )}
-        <button
-          ref={pathChipRef}
-          className="chip chip-path"
-          disabled={locked}
-          title={
-            locked
-              ? t('header.pathTitleLocked')
-              : isChat
-                ? t('header.pathTitleChat', { cwd: session.cwd })
-                : t('header.pathTitleTask', { cwd: session.cwd })
-          }
-          onClick={() => setCwdMenuOpen((v) => !v)}
-        >
-          <IconFolder size={13} />
-          {session.cwd}
-        </button>
       </div>
 
       <div className="header-right">
@@ -200,14 +186,6 @@ export default function Header(): JSX.Element {
           )}
         </button>
       </div>
-
-      {cwdMenuOpen && (
-        <DirPickerMenu
-          purpose="switch"
-          anchor={pathChipRef.current}
-          onClose={() => setCwdMenuOpen(false)}
-        />
-      )}
     </header>
   )
 }

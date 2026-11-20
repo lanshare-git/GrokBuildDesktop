@@ -19,10 +19,6 @@ export const permissionMode: typeof zh = {
   },
   dontAsk: {
     label: 'Allow-list only',
-    desc: 'Only tools matched by allow rules skip prompting; for strict control scenarios'
-  },
-  plan: {
-    label: 'Plan mode',
-    desc: 'Compatibility placeholder mode (used by Claude-compatible settings)'
+    desc: 'Only tools matched by allow rules skip prompting; everything else is denied'
   }
 }

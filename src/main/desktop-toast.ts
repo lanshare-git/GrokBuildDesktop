@@ -4,6 +4,7 @@
  * 应用内 ToastStack 只在主窗口里，最小化后看不见；Electron 33 的系统通知
  * 在 Windows 上又不支持带按钮。所以后台 / 非当前会话的待授权改弹这个独立小窗：
  * 用户可直接点允许/拒绝，无需把主窗口唤回来。
+ * 底部「前往处理」才唤起主窗口并切到发出授权的那条会话。
  */
 
 import { app, BrowserWindow, screen } from 'electron'
@@ -76,7 +77,7 @@ function buildHtml(payload: DesktopPermToast): string {
   const wantPre = escapeHtml(t('prompts.perm.wantPre'))
   const wantPost = escapeHtml(t('prompts.perm.wantPost'))
   const tool = escapeHtml(payload.toolLabel)
-  const openApp = escapeHtml(t('prompts.toast.openApp'))
+  const openApp = escapeHtml(t('prompts.toast.goHandle'))
   const disableToasts = escapeHtml(t('settings.general.desktopPermToast.disableFromToast'))
   const closeLabel = escapeHtml(t('common.close'))
   const brand = escapeHtml(BRAND_NAME)

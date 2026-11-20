@@ -9,6 +9,8 @@ export const sidebar = {
   noSessions: '还没有会话',
   noChats: '还没有聊天',
   newHere: '在此新建',
+  moreSessions: (vars: { n: number }) => `更多 ${vars.n}`,
+  collapseSessions: '收起',
   homeGroupTitle: (vars: { path: string }) =>
     `聊天：固定以你的主目录为根，不绑定任何项目\n${vars.path}\n点击可折叠 / 展开`,
   groupTitle: (vars: { path: string; alias: string }) =>
@@ -21,6 +23,7 @@ export const sidebar = {
   removeFromList: '从工作目录列表移除',
   statusRunning: '正在生成',
   statusPending: '需要你响应',
+  statusDraft: '还没发出',
   statusUnread: '已完成（未读）',
   statusDone: '空闲',
   tagRunning: '生成中',
@@ -110,7 +113,7 @@ export const sidebar = {
     moveDetail:
       '磁盘上的会话记录会连整段历史一起搬过去，之后这个会话就在新目录里跑：工具执行、读写文件、以及 grok 的工作区记忆都以新目录为根。',
     moveChatWarn:
-      '这是纯聊天会话（原本锁定只读）。搬进项目目录后它就和普通任务一样了，可以自己切换权限模式；想继续只读，搬完在右上角选回「计划模式」即可。',
+      '这是纯聊天会话（原本锁定只读）。搬进项目目录后它就和普通任务一样了，可以自己切换权限模式；想继续只读，搬完在右上角选「仅允许列表」即可。',
     moveActiveNote: '它是当前打开的会话，搬完会自动以新目录重新加载。',
     move: '移动'
   },

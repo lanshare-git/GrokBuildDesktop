@@ -78,7 +78,11 @@ export interface GrokDesktopApi {
   ensureSession(sessionId: string, cwd: string): Promise<void>
   prompt(sessionId: string, text: string, images?: ImageAttachment[]): Promise<{ stopReason?: string }>
   cancel(sessionId: string): Promise<void>
-  setConfigOption(sessionId: string, configId: string, value: string): Promise<unknown>
+  setConfigOption(
+    sessionId: string,
+    configId: string,
+    value: string
+  ): Promise<{ configOptions?: ConfigOption[] }>
   /** 切换会话权限模式：'bypassPermissions'（自动批准）或 'default'（逐次询问） */
   setPermissionMode(sessionId: string, modeId: string): Promise<void>
   respondPermission(requestId: number, optionId: string | null): Promise<void>
@@ -146,8 +150,11 @@ export interface GrokDesktopApi {
     reason?: 'invalid-id' | 'not-found' | 'target-missing' | 'same-dir' | 'collision' | 'error'
     detail?: string
   }>
-  /** 拉起系统截图（Win+Shift+S 截图模式），结果进剪贴板，用户再 Ctrl+V 粘贴 */
-  screenshotSnip(): Promise<void>
+  /**
+   * 截图提问。窗口先让开并冻住桌面，框选后双击把图片直接交回。
+   * 取消返回 null。`data` 是不带 data: 前缀的 base64。
+   */
+  screenshotSnip(): Promise<{ data: string; mimeType: string } | null>
   /**
    * 截取当前窗口某一矩形区域为 PNG。
    * 坐标是相对窗口客户区的 DIP（与 getBoundingClientRect 一致）。

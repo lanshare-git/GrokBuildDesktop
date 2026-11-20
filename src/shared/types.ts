@@ -207,7 +207,18 @@ export type ChatItem =
       at: number
     }
   | { kind: 'plan'; id: string; entries: PlanEntry[]; at: number }
-  | { kind: 'notice'; id: string; text: string; level: 'info' | 'warn' | 'error'; at: number }
+  | {
+      kind: 'notice'
+      id: string
+      text: string
+      level: 'info' | 'warn' | 'error'
+      at: number
+      /**
+       * `turn-idle-cancelled`：空闲自动结束的提示。
+       * 只代表客户端在那一刻结束了本轮等待；后面若还有输出，不能留在记录中间。
+       */
+      code?: 'turn-idle-cancelled'
+    }
 
 export interface SessionMeta {
   id: string
@@ -226,7 +237,7 @@ export interface SessionMeta {
   isDraft?: boolean
   /**
    * 草稿会话待定的权限模式：在 materialize 时传给 newSession。
-   * 普通会话取当时的全局权限模式；纯聊天会话固定 'plan'（只读）。
+   * 普通会话取当时的全局权限模式；纯聊天会话固定 dontAsk（只读）。
    */
   pendingPermissionMode?: PermissionMode
   /**
@@ -255,8 +266,15 @@ export interface SessionMeta {
    *  2) 回合进行中客户端在真实流式更新与发消息时同步刷成现在。
    * 侧栏优先读它（`sessionActivityAt`），避免 updatedAt 被 session/load 重放污染；
    * 也避免「只刷 updatedAt、旧 activityAt 压住正在进行的回合」。
+   * 只用于组内会话排序和相对时间，不用于项目分组顺序（那会在两个项目同时输出时对调）。
    */
   activityAt?: number
+  /**
+   * 项目分组的排序锚点（ms）。只在用户发出消息时写入（含草稿首发）。
+   * 只点侧栏「＋」建出的空草稿不写它，否则项目还没开口就会被顶到最前。
+   * 流式输出不更新它。两个项目同时在跑时若按 activityAt 排，每个 token 都会让项目对调。
+   */
+  engagedAt?: number
   items: ChatItem[]
   /** 会话级配置项（模型、推理强度） */
   configOptions: ConfigOption[]
@@ -322,7 +340,8 @@ export type CloseAction = 'tray' | 'quit'
 
 /**
  * 屏幕右下角桌面授权浮窗：
- *  - 'on'：后台或其它会话有待授权时弹出（默认）
+ *  - 'on'：还没在主窗口看过的待授权会弹出（默认）：其它会话，或窗口已在后台时到来。
+ *    主窗口里已经看过的请求，切应用、最小化、藏托盘都不再弹。
  *  - 'off'：不弹浮窗（只靠会话内联面板 + 侧栏色点）
  */
 export type DesktopPermToastMode = 'on' | 'off'
@@ -698,9 +717,9 @@ export interface ImageAttachment {
  *  - `default`          只读工具与内置只读 shell 免询问，其余每次询问（Codex「请求批准」）
  *  - `auto`             安全分类器放行日常操作，仅风险操作弹窗（Codex「帮我审批」）
  *  - `acceptEdits`      文件编辑免询问，其他工具仍逐次询问
- *  - `plan`             兼容占位模式
  *  - `dontAsk`          仅 allow 规则内的工具免询问，最严格
  *  - `bypassPermissions` 全部放行（always-approve/yolo；deny 规则与 hook 仍生效）
+ *  - `plan`             仅兼容旧数据。ACP 收下这个名字，但不拦截写文件，界面不再提供
  */
 export type PermissionMode =
   | 'default'
@@ -710,6 +729,17 @@ export type PermissionMode =
   | 'dontAsk'
   | 'bypassPermissions'
 
+/**
+ * ACP `plan` 是 Claude 兼容占位，不拦截写文件。
+ * 持久化或旧调用里出现时，改成会拒绝未授权工具的 `dontAsk`。
+ */
+export function coercePermissionMode(mode: PermissionMode): PermissionMode {
+  return mode === 'plan' ? 'dontAsk' : mode
+}
+
+/** 主目录纯聊天强制使用的模式：不在 allow 规则里的工具直接拒绝，编辑不会执行。 */
+export const LOCKED_CHAT_PERMISSION_MODE: PermissionMode = 'dontAsk'
+
 export interface PermissionModeOption {
   value: PermissionMode
   /** 字典键（permissionMode.<value>.label），消费处渲染时 t(labelKey) */
@@ -718,7 +748,7 @@ export interface PermissionModeOption {
   descKey: MessageKey
 }
 
-/** 全部权限模式（顺序即界面展示顺序；前三档与 Codex 三档一一对应） */
+/** 界面提供的权限模式（顺序即展示顺序；前三档与 Codex 三档一一对应）。不含占位的 plan。 */
 export const PERMISSION_MODE_OPTIONS: PermissionModeOption[] = [
   {
     value: 'default',
@@ -744,11 +774,6 @@ export const PERMISSION_MODE_OPTIONS: PermissionModeOption[] = [
     value: 'dontAsk',
     labelKey: 'permissionMode.dontAsk.label',
     descKey: 'permissionMode.dontAsk.desc'
-  },
-  {
-    value: 'plan',
-    labelKey: 'permissionMode.plan.label',
-    descKey: 'permissionMode.plan.desc'
   }
 ]
 

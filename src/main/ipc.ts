@@ -19,6 +19,7 @@ import { searchSessions } from './session-search'
 import { aggregateUsage, readSessionUsage } from './session-usage'
 import { fetchBillingQuotaDetailed } from './billing'
 import { readToolCallDensity, writeToolCallDensity } from './grok-config'
+import { captureScreenshotSnip } from './snip'
 import {
   addMarketplace,
   checkGrokUpdate,
@@ -293,10 +294,9 @@ export function registerIpc(service: AgentService): void {
       })
   )
 
-  ipcMain.handle(CH.screenshotSnip, async () => {
-    // Windows 截图工具的屏幕剪辑模式：截图完成后自动进入系统剪贴板，
-    // 用户在输入框 Ctrl+V 即可附带截图提问
-    await shell.openExternal('ms-screenclip:')
+  ipcMain.handle(CH.screenshotSnip, async (event) => {
+    const host = BrowserWindow.fromWebContents(event.sender)
+    return captureScreenshotSnip(host)
   })
 
   // 长截屏：截取窗口客户区某一矩形（DIP）。渲染层滚屏拼图时每段调一次。

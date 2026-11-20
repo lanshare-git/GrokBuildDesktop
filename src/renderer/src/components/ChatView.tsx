@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEve
 import { useVirtualizer } from '@tanstack/react-virtual'
 
 import { editAndResend } from '../actions'
+import { withoutSupersededIdleNotices } from '../idle-notice'
 import { useLocale, useT, type Locale } from '../i18n'
 import { captureLongShotFromElement } from '../long-shot'
 import { useStore } from '../store'
@@ -319,13 +320,15 @@ export default function ChatView(): JSX.Element {
   const groupTools = useStore((s) => densityGroupsTools(s.toolCallDensity))
   const items = useMemo((): DisplayItem[] => {
     // 先丢掉纯 system-reminder，避免虚拟列表出现空行占位
-    const cleaned = rawItems.filter(
-      (item) =>
-        !(
-          item.kind === 'user' &&
-          isAgentNoiseOnly(item.text) &&
-          !(item.images && item.images.length > 0)
-        )
+    const cleaned = withoutSupersededIdleNotices(
+      rawItems.filter(
+        (item) =>
+          !(
+            item.kind === 'user' &&
+            isAgentNoiseOnly(item.text) &&
+            !(item.images && item.images.length > 0)
+          )
+      )
     )
     if (!groupTools) return cleaned
     const out: DisplayItem[] = []

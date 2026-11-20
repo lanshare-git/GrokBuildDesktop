@@ -13,7 +13,7 @@ export const header = {
     `当前会话工作目录：${vars.cwd}\n点击可从已有工作空间切换，或打开其他目录；切换后会「新建」一个任务，当前会话保持不变\n要改当前会话自己的目录：在左侧会话行「☰」菜单里选「移动到工作目录」（生成中的会话不能移动）`,
   model: '模型',
   effort: '推理强度',
-  modeTitleLocked: '聊天会话已锁定为只读（计划模式），不可更改',
+  modeTitleLocked: '聊天会话已锁定为只读（仅允许列表），不可更改',
   modeTitleChat: '该会话由聊天搬来，已可按普通任务切换权限模式',
   modeTitle: (vars: { desc: string }) => `权限模式 · ${vars.desc}`,
   usageTitle: (vars: { input: number; output: number; cacheRead: number }) =>

@@ -4,12 +4,7 @@ import { t as tShared } from '@shared/i18n'
 import type { Locale } from '@shared/i18n'
 import { finishReplayIfIdle, waitForReplay } from './stream-queue'
 import { useStore } from './store'
-import {
-  cancelSessionTurn,
-  consumeIdleCancelled,
-  noteTurnEnded,
-  noteTurnStarted
-} from './turn-idle'
+import { cancelSessionTurn } from './turn-idle'
 
 /**
  * agent 已宣告回合结束（turn_completed / prompt_complete），但 session/prompt
@@ -22,19 +17,20 @@ export function onAgentTurnCompleted(sessionId: string): void {
   // 重放历史里的 turn_completed 不能收尾当前回合
   if (s.reloadingSessions.includes(sessionId)) return
   s.finalizeSession(sessionId)
-  noteTurnEnded(sessionId)
   s.setRunning(sessionId, false)
   s.markStuckTools(sessionId)
 }
 import { isLockedChat, mostRecentWorkspaceCwd, sameDir } from './utils'
-import type {
-  CloseAction,
-  DesktopPermToastMode,
-  GrokAccount,
-  ImageAttachment,
-  McpServerInput,
-  PermissionMode,
-  ToolCallDensity
+import {
+  LOCKED_CHAT_PERMISSION_MODE,
+  coercePermissionMode,
+  type CloseAction,
+  type DesktopPermToastMode,
+  type GrokAccount,
+  type ImageAttachment,
+  type McpServerInput,
+  type PermissionMode,
+  type ToolCallDensity
 } from '@shared/types'
 
 /** 非 hook 上下文（actions/工具函数）取当前语言 */
@@ -158,13 +154,13 @@ export async function moveSessionToWorkspace(
 export async function applyPermissionModeToSession(sessionId: string): Promise<void> {
   const store = useStore.getState()
   if (!store.loadedSessions.includes(sessionId)) return
-  // 只对「还在主目录下的纯聊天会话」强制只读（plan），不被全局权限模式覆盖
+  // 只对「还在主目录下的纯聊天会话」强制只读（dontAsk），不被全局权限模式覆盖
   // （否则恢复/发送时会回退成全局默认）。搬到项目目录的聊天会话已绑定项目，
   // 和普通任务一样跟随全局模式 —— 判据见 utils.isLockedChat。
   const session = store.sessions.find((x) => x.id === sessionId)
   const mode: PermissionMode = isLockedChat(session ?? { cwd: '' }, store.homeDir)
-    ? 'plan'
-    : store.permissionMode
+    ? LOCKED_CHAT_PERMISSION_MODE
+    : coercePermissionMode(store.permissionMode)
   try {
     await window.grok.setPermissionMode(sessionId, mode)
   } catch (err) {
@@ -294,8 +290,8 @@ export async function newSession(cwd?: string, kind?: 'chat', permissionMode?: P
     target = picked
   }
 
-  // 纯聊天会话强制只读（plan）；普通会话取传入，否则沿用当时全局权限模式
-  const mode = permissionMode ?? store.permissionMode
+  // 纯聊天由调用方传入 dontAsk；普通会话取传入，否则沿用当时全局权限模式
+  const mode = coercePermissionMode(permissionMode ?? store.permissionMode)
   store.createDraftSession({ cwd: target, kind, permissionMode: mode })
 }
 
@@ -306,8 +302,8 @@ export async function newSession(cwd?: string, kind?: 'chat', permissionMode?: P
 export async function newChatSession(): Promise<void> {
   const store = useStore.getState()
   const target = store.homeDir || store.cwd
-  // 纯聊天锁定只读（plan）：不写文件
-  await newSession(target, 'chat', 'plan')
+  // 纯聊天锁定只读（dontAsk）：不在 allow 规则里的工具直接拒绝
+  await newSession(target, 'chat', LOCKED_CHAT_PERMISSION_MODE)
 }
 
 /**
@@ -456,8 +452,8 @@ export async function sendPrompt(text: string, images?: ImageAttachment[]): Prom
     }
     // 草稿阶段就锁定：只有「以主目录为根的聊天会话」才强制只读
     const mode: PermissionMode = isLockedChat(session, store.homeDir)
-      ? 'plan'
-      : session.pendingPermissionMode ?? store.permissionMode
+      ? LOCKED_CHAT_PERMISSION_MODE
+      : coercePermissionMode(session.pendingPermissionMode ?? store.permissionMode)
     try {
       const result = await window.grok.newSession({
         cwd: session.cwd,
@@ -490,8 +486,6 @@ export async function sendPrompt(text: string, images?: ImageAttachment[]): Prom
   store.setRunning(activeId, true)
   // 计入在飞回合：agent 正在跑时再发一条，这里就 +1；finally 里只有归零才收尾
   activeTurns.set(activeId, (activeTurns.get(activeId) ?? 0) + 1)
-  // 空闲兜底：停更太久且无工具在飞时自动 cancel，避免「总结写完了还一直正在工作」
-  noteTurnStarted(activeId)
 
   try {
     // 应用重启后 agent 进程是全新的，未加载过的会话必须先 session/load，
@@ -529,10 +523,6 @@ export async function sendPrompt(text: string, images?: ImageAttachment[]): Prom
     // ⚠️ 必须用本轮 sessionId（activeId），不能用当前前台 activeId：
     // 生成途中切走会话时，清错 running 会让原会话永远「正在工作」。
     s.finalizeSession(activeId)
-    // 空闲自动 cancel：等 prompt 真正返回再提示；中途又有 update 则 pending 已清，不贴。
-    if (consumeIdleCancelled(activeId)) {
-      s.appendNotice(activeId, tShared(s.locale, 'chat.turnIdleCancelled'), 'warn')
-    }
     // 只有该会话**没有其它在飞回合**时才真正结束。
     // 排队发送时先完成的那条不能把还在队列里的那条标记成结束，否则界面提前解锁。
     const left = (activeTurns.get(activeId) ?? 1) - 1
@@ -540,7 +530,6 @@ export async function sendPrompt(text: string, images?: ImageAttachment[]): Prom
       activeTurns.set(activeId, left)
     } else {
       activeTurns.delete(activeId)
-      noteTurnEnded(activeId)
       s.setRunning(activeId, false)
       // 客户端兜底：回合已结束（正常返回 / 报错 / 超时 / 被 ■ 中断），
       // 但仍有工具卡停在 in_progress —— agent **不会**补发终态
@@ -560,7 +549,7 @@ export function cancelCurrent(): void {
   const session = store.activeSession()
   if (!session) return
   // 主进程会把挂起的提问/权限按取消结算；点 ■ 时清掉全部待响应面板
-  //（用户明确要停当前窗口的交互）。空闲自动 cancel 只清本会话，见 cancelSessionTurn。
+  //（用户明确要停当前窗口的交互）。
   store.clearAllPrompts()
   cancelSessionTurn(session.id)
 }
@@ -581,7 +570,6 @@ export async function editAndResend(
   // 兜底：若 agent 仍在运行，先中断当前回合
   if (store.running.includes(session.id)) {
     cancelSessionTurn(session.id)
-    noteTurnEnded(session.id)
     activeTurns.delete(session.id)
     store.setRunning(session.id, false)
   }
@@ -604,10 +592,16 @@ export async function changeConfigOption(configId: string, value: string): Promi
   }
 
   try {
-    await window.grok.setConfigOption(session.id, configId, value)
-    // 记住用户偏好，下次新建任务默认用这个
+    const result = await window.grok.setConfigOption(session.id, configId, value)
+    const options = result?.configOptions
+    if (options && options.length > 0) {
+      useStore.getState().applySessionConfig(session.id, options)
+    }
+    // 记住用户偏好，下次新建任务默认用这个。以 agent 回写的 currentValue 为准。
     if (configId === 'model' || configId === 'reasoning_effort') {
-      store.setDraftConfig(session.id, configId, value)
+      const applied = options?.find((o) => (o.configId ?? o.id) === configId)
+      const remembered = typeof applied?.currentValue === 'string' ? applied.currentValue : value
+      useStore.getState().setDraftConfig(session.id, configId, remembered)
     }
   } catch (err) {
     store.appendNotice(session.id, tShared(locale(), 'mainErrors.notices.configSwitchFailed', { id: configId, message: cleanError(err) }), 'warn')

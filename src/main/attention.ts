@@ -4,9 +4,10 @@
  * - 授权：屏幕右下角置顶浮窗（可直接点允许/拒绝）
  * - 提问：系统通知 + 任务栏闪烁（点击唤起主窗口）
  *
- * 主窗口前台且正在看该会话时：内联授权面板已够用，不弹浮窗。
- * 用户已经在该会话里看过内联面板后，再切到别的会话也不再弹浮窗
- * （侧栏橙点足够）；只有整窗进后台（最小化/失焦/藏托盘）才再弹。
+ * 主窗口前台且正在看该会话时：内联授权 / 提问面板已够用，不弹浮窗。
+ * 用户已经在该会话里看过内联面板后，不再为这条请求弹右下角提醒：
+ * 切到别的会话、切到其它应用、最小化、藏进托盘都不弹。人已经知道有交互。
+ * 还没在主窗口看过的（例如发生在别的会话、或窗口已经在后台才到来），仍会弹。
  */
 
 import { BrowserWindow, Notification } from 'electron'
@@ -47,8 +48,8 @@ function toastMode(): DesktopPermToastMode {
 /** 同一 requestId 只弹一次（dismiss 后也算，避免立刻再弹） */
 const seen = new Set<string>()
 /**
- * 用户已在对应会话里见过内联授权面板的请求。
- * 切到其它会话时不再弹桌面浮窗；整窗进后台仍可再弹。
+ * 用户已在主窗口对应会话里见过内联交互（授权面板或提问）的请求。
+ * 见过即不再弹右下角提醒，包括切会话、切到其它应用、最小化和藏进托盘。
  */
 const seenInline = new Set<string>()
 /** 暂不展示的提醒：前台正在看该会话，或提问时窗口仍在前台 */
@@ -156,20 +157,22 @@ function flushDeferred(): void {
       continue
     }
     if (notice.kind === 'perm') {
-      // 已在会话里看过内联面板：会话间切换不弹，只在整窗进后台时再弹
-      if (seenInline.has(key) && !windowInBackground()) continue
+      // 已在主窗口看过内联面板：切会话、切应用、最小化、藏托盘都不再弹
+      if (seenInline.has(key)) continue
       if (!shouldShowDesktopPerm(notice.sessionId)) continue
       showAttention(notice)
       continue
     }
+    // 提问同理：主窗口上已经看过的，离开窗口不再发系统通知
+    if (seenInline.has(key)) continue
     if (!windowInBackground()) continue
     showAttention(notice)
   }
 }
 
 /**
- * 主窗口前台且正在看某会话 → 关掉该会话桌面浮窗，记为「已看过内联」，
- * 再切走其它会话时不再弹；整窗进后台仍可经 flushDeferred 再弹。
+ * 主窗口前台且正在看某会话 → 关掉该会话桌面浮窗，记为「已看过内联」。
+ * 之后离开窗口（切会话、切应用、最小化、藏托盘）都不再为它弹提醒。
  */
 function parkPermToastsForActiveSession(): void {
   if (!activeSessionId || windowInBackground()) return
@@ -187,12 +190,10 @@ function parkPermToastsForActiveSession(): void {
 /** 渲染层切换当前会话时调用 */
 export function setActiveSessionId(sessionId: string | null): void {
   activeSessionId = sessionId
-  // 切到有待授权的会话：内联面板会出来，记为已看过
+  // 切到有待授权 / 待回答的会话：内联面板会出来，记为已看过
   if (sessionId && !windowInBackground()) {
     for (const [key, notice] of deferred) {
-      if (notice.kind === 'perm' && notice.sessionId === sessionId) {
-        seenInline.add(key)
-      }
+      if (notice.sessionId === sessionId) seenInline.add(key)
     }
     for (const [requestId, notice] of permNotices) {
       if (notice.sessionId === sessionId) {
@@ -233,9 +234,10 @@ export function notifyAwaitingUser(notice: AwaitingUserNotice): void {
   if (notice.kind === 'perm') {
     permNotices.set(notice.requestId, notice)
     if (!shouldShowDesktopPerm(notice.sessionId)) {
-      // 正在看该会话：内联面板 suffice，记已看过，切走也不再弹浮窗
+      // 正在看该会话：内联面板已够用。只有这时才算「看过」——
+      // 浮窗总开关关掉时不应误记，否则重新打开后切到其它应用也不会再提醒。
       deferred.set(key, notice)
-      seenInline.add(key)
+      if (!windowInBackground() && activeSessionId === notice.sessionId) seenInline.add(key)
       return
     }
     showAttention(notice)
@@ -244,6 +246,8 @@ export function notifyAwaitingUser(notice: AwaitingUserNotice): void {
 
   if (!windowInBackground()) {
     deferred.set(key, notice)
+    // 正在看这条提问所在的会话：内联面板已出现，切到其它应用不再通知
+    if (activeSessionId === notice.sessionId) seenInline.add(key)
     return
   }
 

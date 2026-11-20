@@ -24,7 +24,7 @@ export function sameDir(a: string, b: string): boolean {
 /**
  * 纯聊天会话是否还处于「只读锁定」态。
  *
- * 锁定它的理由只有一条：**以主目录为根、不绑定任何项目**，所以强制只读（计划模式）防止误写文件。
+ * 锁定它的理由只有一条：**以主目录为根、不绑定任何项目**，所以强制只读（仅允许列表）防止误写文件。
  * 一旦用户把会话搬到某个项目目录（`actions.moveSessionToWorkspace`），这个理由就不成立了 ——
  * 会话已经绑定项目，就该和普通任务一样能自己选权限模式。
  * 因此判据是「kind 为 chat **且** cwd 仍在主目录下」，不能只看 kind。
@@ -54,11 +54,14 @@ export function sessionActivityAt(session: SessionMeta): number {
 }
 
 /**
- * 尚未发过消息的本地草稿（侧栏不展示，对齐 Cursor「New Agent」）。
- * 输入框有未发送内容也不进列表——真正首发 materialize 后才出现。
+ * 项目分组的排序时间。只认用户发出消息的时刻，不认流式输出。
+ * 没有锚点的正式会话退回创建时间：创建时间不变，输出过程中项目位置也不会变。
+ * 只点了「＋」、还没发消息的草稿不参与排序，避免空任务把目录顶到最前。
+ * 草稿一旦发出消息就会写上 engagedAt，那时才计入。
  */
-export function isUnsentDraft(session: SessionMeta): boolean {
-  return !!session.isDraft && session.items.length === 0
+export function sessionGroupOrderAt(session: SessionMeta): number {
+  if (session.isDraft && session.engagedAt == null) return 0
+  return session.engagedAt ?? session.createdAt
 }
 
 /**
@@ -93,8 +96,11 @@ export interface WorkspaceGroup {
    */
   isHome: boolean
   sessions: SessionMeta[]
-  /** 组内最近活动时间，用于排序 */
-  latest: number
+  /**
+   * 项目排序锚点：组内最近一次发出消息。
+   * 只点「＋」的空草稿不算。流式输出也不推进它，两个项目同时在跑时顺序保持不动。
+   */
+  orderAt: number
 }
 
 /**
@@ -123,7 +129,7 @@ export function groupSessionsByWorkspace(
         manual: false,
         isHome: Boolean(homeDir) && normalizeDir(homeDir as string).toLowerCase() === key,
         sessions: [],
-        latest: 0
+        orderAt: 0
       }
       groups.set(key, group)
     }
@@ -157,17 +163,68 @@ export function groupSessionsByWorkspace(
         b.createdAt - a.createdAt ||
         (a.id < b.id ? -1 : 1)
     )
-    group.latest = group.sessions[0] ? sessionActivityAt(group.sessions[0]) : 0
+    // 项目顺序看「用户最近一次发消息」，不看刚才谁吐了一个 token，
+    // 也不看只点了「＋」还没发出去的草稿。
+    // 两个项目同时在跑时 activityAt 会交替刷新，用它排序项目头就会一直对调。
+    let orderAt = 0
+    for (const session of group.sessions) {
+      const at = sessionGroupOrderAt(session)
+      if (at > orderAt) orderAt = at
+    }
+    group.orderAt = orderAt
   }
-  // 聊天组（主目录）永远置顶；其余有会话的目录按最近活动倒序，空目录（手动登记）沉底。
-  // 活动时间相同时按路径兜底：分组来自 Map，插入次序会变，
-  // 没有兜底键的话「同为最新」的两个目录就会随渲染抖动。
+  // 聊天组（主目录）永远置顶；其余按最近一次发消息倒序，空目录（手动登记）沉底。
+  // 锚点相同时按路径兜底：分组来自 Map，插入次序会变，
+  // 没有兜底键的话同锚点的两个目录就会随渲染抖动。
   return list.sort(
     (a, b) =>
       (b.isHome ? 1 : 0) - (a.isHome ? 1 : 0) ||
-      b.latest - a.latest ||
+      b.orderAt - a.orderAt ||
       a.key.localeCompare(b.key)
   )
+}
+
+/**
+ * 每个工作目录默认露出的会话条数。
+ * 侧栏一屏大约十来行；露出 8 条再加一行「更多」，下面的工作目录还能看见。
+ * 再短会把刚做过的任务藏起来，再长又会回到一个目录占满侧栏。
+ */
+export const SIDEBAR_GROUP_PREVIEW = 8
+
+/**
+ * 把一个工作目录里的会话分成「默认露出」和「收进更多」。
+ * 调用方须已按活动时间从新到旧排序。
+ *
+ * 当前打开、正在生成、待响应、未读算钉住：偏旧也留在露出区，并计入 limit。
+ * 剩下的名额用最近的空闲会话补满。钉住的已经不少于 limit 时，空闲会话全部收起。
+ */
+export function splitGroupSessions<T extends { id: string }>(
+  sessions: readonly T[],
+  opts: { pinnedIds: ReadonlySet<string>; limit?: number }
+): { shown: T[]; folded: T[] } {
+  const limit = opts.limit ?? SIDEBAR_GROUP_PREVIEW
+  if (sessions.length <= limit) return { shown: [...sessions], folded: [] }
+
+  const pinned: T[] = []
+  const quiet: T[] = []
+  for (const session of sessions) {
+    if (opts.pinnedIds.has(session.id)) pinned.push(session)
+    else quiet.push(session)
+  }
+  const quietSlots = Math.max(0, limit - pinned.length)
+  if (quiet.length <= quietSlots) return { shown: [...sessions], folded: [] }
+
+  const keep = new Set<string>()
+  for (const session of pinned) keep.add(session.id)
+  for (const session of quiet.slice(0, quietSlots)) keep.add(session.id)
+
+  const shown: T[] = []
+  const folded: T[] = []
+  for (const session of sessions) {
+    if (keep.has(session.id)) shown.push(session)
+    else folded.push(session)
+  }
+  return { shown, folded }
 }
 
 export function relativeTime(ts: number, locale: Locale): string {

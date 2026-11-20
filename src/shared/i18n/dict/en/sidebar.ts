@@ -14,6 +14,8 @@ export const sidebar: typeof zh = {
   noSessions: 'No sessions yet',
   noChats: 'No chats yet',
   newHere: 'New here',
+  moreSessions: (vars: { n: number }) => (vars.n === 1 ? '1 more' : `${vars.n} more`),
+  collapseSessions: 'Show less',
   homeGroupTitle: (vars: { path: string }) =>
     `Chats: always rooted at your home directory, not tied to any project\n${vars.path}\nClick to collapse / expand`,
   groupTitle: (vars: { path: string; alias: string }) =>
@@ -26,6 +28,7 @@ export const sidebar: typeof zh = {
   removeFromList: 'Remove from the workspace list',
   statusRunning: 'Generating',
   statusPending: 'Needs your response',
+  statusDraft: 'Not sent yet',
   statusUnread: 'Finished (unread)',
   statusDone: 'Idle',
   tagRunning: 'Generating',
@@ -116,7 +119,7 @@ export const sidebar: typeof zh = {
     moveDetail:
       "The session's on-disk records will be moved along with its full history, and the session will run in the new directory afterwards: tool execution, file reads/writes, and grok's workspace memory will all be rooted there.",
     moveChatWarn:
-      'This is a pure chat session (originally locked read-only). Once moved into a project directory it behaves like a normal task and you can switch permission modes yourself; to keep it read-only, switch back to "Plan mode" in the top-right corner after moving.',
+      'This is a pure chat session (originally locked read-only). Once moved into a project directory it behaves like a normal task and you can switch permission modes yourself; to keep it read-only, choose "Allow-list only" in the top-right corner after moving.',
     moveActiveNote: 'It is the currently open session; it will be reloaded with the new directory after the move.',
     move: 'Move'
   },

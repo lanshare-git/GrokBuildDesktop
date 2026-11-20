@@ -39,7 +39,7 @@ export const settings: typeof zh = {
     },
     desktopPermToast: {
       title: 'Permission toast',
-      desc: 'Whether to show a desktop toast with Allow/Deny when another session needs approval or the window is in the background',
+      desc: 'Toast requests you have not already seen in the main window (another session, or one that arrives while the window is in the background). After you have seen it, switching apps, minimizing, or hiding to the tray does not toast it again',
       on: 'On',
       off: 'Off',
       hint: 'When off, rely on the in-session panel and sidebar dots only. You can turn it back on here or from the toast footer.',

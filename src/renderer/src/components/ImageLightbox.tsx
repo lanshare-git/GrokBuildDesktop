@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type SyntheticEvent
 } from 'react'
+import { createPortal } from 'react-dom'
 
 import { useT } from '../i18n'
 import { IconClose, IconPlus } from './Icons'
@@ -29,6 +30,9 @@ function clampUserScale(next: number): number {
 
 /**
  * 全屏图片预览。
+ *
+ * 必须 portal 到 document.body。长会话的虚拟行带 transform（translateY），
+ * 行内的 position:fixed 会以该行为包含块，预览就被裁成消息那么一块。
  *
  * ⚠️ 缩放必须改 img 的 layout 宽高（按 naturalWidth 计算），不能用
  * `transform: scale`：后者只是把「已经按窗口缩小后光栅化」的位图再放大，
@@ -227,7 +231,7 @@ export default function ImageLightbox({ src, alt, onClose }: ImageLightboxProps)
     }
   }
 
-  return (
+  return createPortal(
     <div
       className="image-lightbox"
       role="dialog"
@@ -297,6 +301,7 @@ export default function ImageLightbox({ src, alt, onClose }: ImageLightboxProps)
       <div className="image-lightbox-hint muted" onClick={onClose}>
         {t('chat.imageZoomHint')}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

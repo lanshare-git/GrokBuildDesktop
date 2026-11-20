@@ -14,11 +14,11 @@ import { useStore } from '../store'
 import {
   basename,
   groupSessionsByWorkspace,
-  isUnsentDraft,
   relativeTime,
   sameDir,
   sessionActivityAt,
-  sessionDisplayTitle
+  sessionDisplayTitle,
+  splitGroupSessions
 } from '../utils'
 import type { WorkspaceGroup } from '../utils'
 import type { SessionMeta, SessionSearchHit } from '@shared/types'
@@ -38,8 +38,8 @@ import {
   IconSearch
 } from './Icons'
 
-/** 会话行状态（对齐 Cursor：橙待处理 > 输出中 > 蓝未读 > 灰空闲） */
-type SessionStatus = 'pending' | 'running' | 'unread' | 'done'
+/** 会话行状态（对齐 Cursor：橙待处理 > 输出中 > 空心未发出 > 蓝未读 > 灰空闲） */
+type SessionStatus = 'pending' | 'running' | 'draft' | 'unread' | 'done'
 
 /** 悬停会话行时浮出的详情卡：完整标题被截断时仍能看清全名，并补上行内放不下的信息 */
 interface PreviewSpec {
@@ -118,6 +118,11 @@ export default function Sidebar(): JSX.Element {
    */
   const [dragSessionId, setDragSessionId] = useState<string | null>(null)
   const [dropKey, setDropKey] = useState<string | null>(null)
+  /**
+   * 哪些工作目录点开了「更多」。不落盘：下次启动仍先露出最近几条，
+   * 避免一个目录再次把侧栏撑满。
+   */
+  const [expandedSessionGroups, setExpandedSessionGroups] = useState<string[]>([])
 
   // 删除弹窗里「同时删除磁盘文件」的初值来自设置中心（默认 true）。
   // 挂载时读一次即可：用户若在设置里改过，下次打开弹窗就是新默认值。
@@ -169,25 +174,37 @@ export default function Sidebar(): JSX.Element {
     hits?.find((h) => h.sessionId === id && h.where === 'content')?.snippet ?? null
 
   // 搜索态下只展示命中的会话；分组结构保留，避免整页塌成一张平铺列表。
-  // 未发消息的本地草稿不进侧栏（主区仍是空白聊天；首发 materialize 后才出现）。
-  const visibleSessions = (hitIds ? sessions.filter((s) => hitIds.has(s.id)) : sessions).filter(
-    (s) => !isUnsentDraft(s)
-  )
+  // 未发送的新任务也留在对应工作目录下（点「新建任务」就能在列表里看到它）。
+  // 搜索候选不含草稿，所以有搜索词时这条不会混进结果。
+  const visibleSessions = hitIds ? sessions.filter((s) => hitIds.has(s.id)) : sessions
   const groups = useMemo(
     () => groupSessionsByWorkspace(visibleSessions, workspaces, homeDir, locale),
     [visibleSessions, workspaces, homeDir, locale]
   )
 
-  // 优先级：待你处理 > 输出中 > 做完未读 > 空闲（对齐 Cursor）
+  // 优先级：待你处理 > 输出中 > 还没发出 > 做完未读 > 空闲（对齐 Cursor）
   // 等待批准时 running 仍可能为 true，所以 pending 要先判。
   const statusOf = (id: string): SessionStatus =>
     permissions.some((p) => p.sessionId === id) || questions.some((q) => q.sessionId === id)
       ? 'pending'
       : running.includes(id)
         ? 'running'
-        : unreadSessionIds.includes(id)
-          ? 'unread'
-          : 'done'
+        : sessions.some((x) => x.id === id && x.isDraft)
+          ? 'draft'
+          : unreadSessionIds.includes(id)
+            ? 'unread'
+            : 'done'
+
+  /** 这些会话即使偏旧也留在分组露出区，不收进「更多」 */
+  const pinnedIds = useMemo(() => {
+    const ids = new Set<string>()
+    if (activeId) ids.add(activeId)
+    for (const id of running) ids.add(id)
+    for (const id of unreadSessionIds) ids.add(id)
+    for (const p of permissions) ids.add(p.sessionId)
+    for (const q of questions) ids.add(q.sessionId)
+    return ids
+  }, [activeId, running, unreadSessionIds, permissions, questions])
 
   const clearPreviewTimers = (): void => {
     if (previewTimer.current !== null) {
@@ -719,7 +736,11 @@ export default function Sidebar(): JSX.Element {
                   </div>
                 )}
 
-                  {group.sessions.map((session) => {
+                  {(() => {
+                    const opened = expandedSessionGroups.includes(group.key)
+                    const { shown, folded } = splitGroupSessions(group.sessions, { pinnedIds })
+                    const queryActive = query.trim().length > 0
+                    const renderSession = (session: SessionMeta): JSX.Element => {
                     const title = sessionDisplayTitle(session, locale)
                     const isRenaming = editingSessionId === session.id
                     const status = statusOf(session.id)
@@ -781,9 +802,11 @@ export default function Sidebar(): JSX.Element {
                                 ? t('sidebar.statusPending')
                                 : status === 'running'
                                   ? t('sidebar.statusRunning')
-                                  : status === 'unread'
-                                    ? t('sidebar.statusUnread')
-                                    : t('sidebar.statusDone')
+                                  : status === 'draft'
+                                    ? t('sidebar.statusDraft')
+                                    : status === 'unread'
+                                      ? t('sidebar.statusUnread')
+                                      : t('sidebar.statusDone')
                             }
                           />
                           <div className="session-item-body">
@@ -847,7 +870,36 @@ export default function Sidebar(): JSX.Element {
                         )}
                       </div>
                     )
-                  })}
+                    }
+                    return (
+                      <>
+                        {shown.map(renderSession)}
+                        {folded.length > 0 && !queryActive && (
+                          <button
+                            type="button"
+                            className="ws-more"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setExpandedSessionGroups((keys) =>
+                                opened
+                                  ? keys.filter((k) => k !== group.key)
+                                  : [...keys, group.key]
+                              )
+                            }}
+                          >
+                            <IconChevron
+                              size={12}
+                              className={`ws-caret${opened ? '' : ' is-collapsed'}`}
+                            />
+                            {opened
+                              ? t('sidebar.collapseSessions')
+                              : t('sidebar.moreSessions', { n: folded.length })}
+                          </button>
+                        )}
+                        {(opened || queryActive) && folded.map(renderSession)}
+                      </>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -864,7 +916,7 @@ export default function Sidebar(): JSX.Element {
         >
           <div className="session-preview-head">
             <span className="session-preview-title">{sessionDisplayTitle(previewSession, locale)}</span>
-            {previewStatus !== 'done' && (
+            {previewStatus !== 'done' && previewStatus !== 'draft' && (
               <span className={`session-status-tag status-${previewStatus}`}>
                 {previewStatus === 'pending'
                   ? t('sidebar.tagPending')

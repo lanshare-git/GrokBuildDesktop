@@ -3,9 +3,11 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Keyboar
 import { cancelCurrent, newSessionInWorktree, sendPrompt } from '../actions'
 import { useT, type MessageKey } from '../i18n'
 import { useStore } from '../store'
+import { isLockedChat } from '../utils'
 import ConfirmDialog from './ConfirmDialog'
 import type { ConfirmSpec } from './ConfirmDialog'
-import { IconBox, IconClose, IconImage, IconPlus, IconScissors, IconSend, IconStop } from './Icons'
+import DirPickerMenu from './DirPickerMenu'
+import { IconBox, IconClose, IconFolder, IconImage, IconPlus, IconScissors, IconSend, IconStop } from './Icons'
 import type { AvailableCommand, ImageAttachment } from '@shared/types'
 
 interface Attachment extends ImageAttachment {
@@ -87,6 +89,13 @@ export default function Composer(): JSX.Element {
 
   // 在 worktree 中新建任务（等价终端 grok -w，入口是 /worktree 命令，不加按钮）
   const cwd = useStore((s) => s.activeSession()?.cwd ?? s.cwd)
+  const session = useStore((s) => s.sessions.find((x) => x.id === s.activeId))
+  const homeDir = useStore((s) => s.homeDir)
+  const locked = session ? isLockedChat(session, homeDir) : false
+  const isChat = session?.kind === 'chat'
+  /** 项目路径：放在输入框上方，点击切换工作目录 */
+  const [cwdMenuOpen, setCwdMenuOpen] = useState(false)
+  const pathChipRef = useRef<HTMLButtonElement | null>(null)
   const [wtConfirm, setWtConfirm] = useState<ConfirmSpec | null>(null)
   const [wtHint, setWtHint] = useState<string | null>(null)
   const flashWt = (text: string): void => {
@@ -262,10 +271,22 @@ export default function Composer(): JSX.Element {
     e.target.value = ''
   }
 
-  /** 拉起系统截图（Win+Shift+S 剪辑模式），截完在输入框 Ctrl+V */
+  /** 截图提问：框选后双击，图片直接进输入框，不用 Ctrl+V */
   const snip = (): void => {
-    void window.grok.screenshotSnip()
-    textareaRef.current?.focus()
+    void (async () => {
+      try {
+        const shot = await window.grok.screenshotSnip()
+        if (!shot?.data) return
+        const binary = atob(shot.data)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+        addImageBlob(new Blob([bytes], { type: shot.mimeType || 'image/png' }), t('composer.screenshotImage'))
+        textareaRef.current?.focus()
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        useStore.getState().pushLog(`[snip] ${message}`)
+      }
+    })()
   }
 
   const removeAttachment = (id: string): void => {
@@ -387,6 +408,34 @@ export default function Composer(): JSX.Element {
         </div>
       )}
       {wtHint && <div className="composer-hint">{wtHint}</div>}
+      {cwd && (
+        <div className="composer-cwd">
+          <button
+            ref={pathChipRef}
+            type="button"
+            className="chip chip-path"
+            disabled={locked}
+            title={
+              locked
+                ? t('header.pathTitleLocked')
+                : isChat
+                  ? t('header.pathTitleChat', { cwd })
+                  : t('header.pathTitleTask', { cwd })
+            }
+            onClick={() => setCwdMenuOpen((v) => !v)}
+          >
+            <IconFolder size={13} />
+            <span className="chip-path-label">{cwd}</span>
+          </button>
+          {cwdMenuOpen && (
+            <DirPickerMenu
+              purpose="switch"
+              anchor={pathChipRef.current}
+              onClose={() => setCwdMenuOpen(false)}
+            />
+          )}
+        </div>
+      )}
       <div className="composer-box">
         {/* 「+」菜单挂在输入框上沿之上，避免压住输入框 */}
         {menuOpen && (

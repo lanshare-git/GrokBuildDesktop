@@ -7,6 +7,59 @@ import {
 } from '@shared/permission-labels'
 import type { PermissionRequestEvent } from '@shared/types'
 
+/** 短标题直接用；更长的脚本改走下方预览，避免标题把卡片撑高 */
+const TITLE_LIMIT = 72
+/** 这些键不是要给人看的命令正文 */
+const META_KEYS = new Set(['variant', 'kind', 'type', 'command', 'cmd'])
+
+function textField(obj: Record<string, unknown>, key: string): string {
+  const value = obj[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+/**
+ * 授权卡只展示将要执行的内容。
+ * 命令类参数去掉 `{ variant, command }` 这层 JSON，标题不再把整段脚本再写一遍。
+ */
+function permissionDetail(raw: unknown): string {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return stringifyPretty(raw, 1200)
+  const obj = raw as Record<string, unknown>
+  const command = textField(obj, 'command') || textField(obj, 'cmd')
+  if (!command) return stringifyPretty(raw, 1200)
+
+  const extras = Object.keys(obj)
+    .filter((key) => !META_KEYS.has(key))
+    .map((key) => {
+      const value = obj[key]
+      if (typeof value === 'string' && value.trim()) return `${key}: ${value.trim()}`
+      if (typeof value === 'number' || typeof value === 'boolean') return `${key}: ${String(value)}`
+      return ''
+    })
+    .filter(Boolean)
+
+  return extras.length > 0 ? `${command}\n${extras.join('\n')}` : command
+}
+
+function permissionLabel(
+  title: string | undefined,
+  toolName: string | undefined,
+  raw: unknown,
+  fallback: string
+): string {
+  const trimmed = title?.trim() ?? ''
+  if (trimmed && !trimmed.includes('\n') && trimmed.length <= TITLE_LIMIT) return trimmed
+
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const variant = textField(raw as Record<string, unknown>, 'variant')
+    if (variant) return variant
+  }
+  const name = toolName?.trim()
+  if (name) return name
+  if (!trimmed) return fallback
+  const first = trimmed.split('\n')[0]
+  return first.length > TITLE_LIMIT ? `${first.slice(0, TITLE_LIMIT)}…` : first
+}
+
 /**
  * 工具执行授权面板。
  *
@@ -20,7 +73,17 @@ export default function PermissionPanel({
   request: PermissionRequestEvent
 }): JSX.Element {
   const t = useT()
-  const input = stringifyPretty(request.toolCall?.rawInput, 1200)
+  const raw = request.toolCall?.rawInput
+  const label = permissionLabel(
+    request.toolCall?.title,
+    request.toolCall?.toolName,
+    raw,
+    t('prompts.perm.fallbackTool')
+  )
+  const detail = permissionDetail(raw)
+  const toolName = request.toolCall?.toolName?.trim()
+  const showToolName = Boolean(toolName && toolName !== label)
+  const showDetail = Boolean(detail && detail !== label)
 
   const decide = (optionId: string | null): void => {
     void window.grok.respondPermission(request.requestId, optionId)
@@ -35,13 +98,13 @@ export default function PermissionPanel({
         <span className="prompt-title">{t('prompts.perm.title')}</span>
       </div>
       <div className="prompt-sub">
-        {t('prompts.perm.wantPre')}
-        <strong>{request.toolCall?.title ?? t('prompts.perm.fallbackTool')}</strong>
+        <span className="prompt-sub-lead">{t('prompts.perm.wantPre')}</span>
+        <strong>{label}</strong>
         {t('prompts.perm.wantPost')}
-        {request.toolCall?.toolName && <code className="inline-code">{request.toolCall.toolName}</code>}
+        {showToolName && <code className="inline-code">{toolName}</code>}
       </div>
 
-      {input && <pre className="prompt-pre">{input}</pre>}
+      {showDetail && <pre className="prompt-pre">{detail}</pre>}
 
       <div className="prompt-actions">
         {request.options.map((opt) => {

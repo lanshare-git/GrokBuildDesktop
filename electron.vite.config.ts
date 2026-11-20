@@ -36,7 +36,9 @@ export default defineConfig({
         input: {
           index: resolve('src/preload/index.ts'),
           // 屏幕右下角授权浮窗专用，能力面极窄
-          toast: resolve('src/preload/toast.ts')
+          toast: resolve('src/preload/toast.ts'),
+          // 截图提问的全屏选区覆盖窗
+          snip: resolve('src/preload/snip.ts')
         }
       }
     }

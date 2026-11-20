@@ -54,6 +54,36 @@ interface RawBilling {
 
 let cache: { at: number; value: BillingQuota | null; error?: string } | null = null
 
+/** 打码命令行里的 Bearer / JWT，避免额度失败把登录令牌渲到界面上。 */
+function redactSecrets(text: string): string {
+  return text
+    .replace(/Bearer\s+\S+/gi, 'Bearer ***')
+    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+\b/g, '[token]')
+}
+
+/**
+ * execFile 失败时 message 是「Command failed: curl.exe … Authorization: Bearer <token> …」
+ * 整段嵌进用量页会撑破折行，还把令牌露出去。优先取 stderr 里 curl 自己的那一行。
+ */
+function describeBillingError(err: unknown): string {
+  const e = err as { stdout?: string; stderr?: string; message?: string }
+  const pick = (raw: string): string => {
+    const lines = raw
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .filter((l) => !/^Command failed:/i.test(l))
+      .map(redactSecrets)
+      .filter(Boolean)
+    return lines.join('\n')
+  }
+  return (
+    pick(String(e.stderr ?? '')) ||
+    pick(String(e.message ?? '')) ||
+    t('mainErrors.billing.unavailable')
+  )
+}
+
 /** 取登录令牌（auth.json 里第一个条目的 key）。拿不到就返回 null，不抛。 */
 async function readToken(): Promise<string | null> {
   try {
@@ -134,7 +164,7 @@ export async function fetchBillingQuota(force = false): Promise<BillingQuota | n
   try {
     body = proxy ? await getViaCurl(token, proxy) : await getViaFetch(token)
   } catch (err) {
-    cache = { at: Date.now(), value: null, error: (err as Error).message }
+    cache = { at: Date.now(), value: null, error: describeBillingError(err) }
     return null
   }
 

@@ -5,6 +5,7 @@
  *   无   = 清掉 overlay
  *
  * 用 BrowserWindow.setOverlayIcon；资源来自 build/taskbar-badge-*.png（gen-icons 生成）。
+ * 角标图只在画布中央画一颗小点：Win11 会把整张图贴在图标左上，铺满的圆会盖住标志。
  */
 
 import { app, BrowserWindow, nativeImage, type NativeImage } from 'electron'

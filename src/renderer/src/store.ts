@@ -26,7 +26,8 @@ import type {
   TurnUsage,
   WorkspaceMeta
 } from '@shared/types'
-import { densityExpandsByDefault } from '@shared/types'
+import { coercePermissionMode, densityExpandsByDefault } from '@shared/types'
+import { withoutSupersededIdleNotices } from './idle-notice'
 import { stripAgentNoise } from '@shared/agent-noise'
 import { resolveLocale, t as tShared, type Locale } from '@shared/i18n'
 import { mostRecentWorkspaceCwd, normalizeDir, toolCallOutput } from './utils'
@@ -319,7 +320,13 @@ function mergePendingUserMessages(
         if (ids.has(p.id)) return false
         return !userTexts.some((t) => isSameUserText(t, p.text))
       })
-      return extra.length === 0 ? x : { ...x, items: [...x.items, ...extra] }
+      if (extra.length === 0) return x
+      const sentAt = extra.reduce((max, p) => Math.max(max, p.at || 0), x.engagedAt ?? 0)
+      return {
+        ...x,
+        items: [...x.items, ...extra],
+        engagedAt: sentAt || x.engagedAt
+      }
     })
   }
 }
@@ -798,6 +805,8 @@ interface AppState {
    * 真实会话请走 actions.changeConfigOption（发 ACP）。
    */
   setDraftConfig(sessionId: string, configId: 'model' | 'reasoning_effort', value: string): void
+  /** 用 session/set_config_option 的完整返回替换该会话的选项，并写入目录缓存 */
+  applySessionConfig(sessionId: string, options: ConfigOption[]): void
   /** 改会话名：写 customTitle，不动 updatedAt（改名不该改变排序） */
   renameSession(id: string, title: string): void
   /**
@@ -854,7 +863,12 @@ interface AppState {
    * 否则逐条 set 会造成数秒的主线程阻塞（详见实现处的实测数据）。
    */
   applyStreamBatch(events: AcpStreamEvent[]): void
-  appendNotice(sessionId: string, text: string, level?: 'info' | 'warn' | 'error'): void
+  appendNotice(
+    sessionId: string,
+    text: string,
+    level?: 'info' | 'warn' | 'error',
+    code?: 'turn-idle-cancelled'
+  ): void
   setRunning(sessionId: string, running: boolean): void
   /** 标记会话有未读完成结果（一般由 setRunning(false) 自动调用） */
   markSessionUnread(sessionId: string): void
@@ -940,6 +954,7 @@ function applyOne(s: AppState, events: AcpStreamEvent[]): Partial<AppState> {
     let configOptions = session.configOptions
     let usage: TurnUsage | undefined = session.usage
 
+    const itemsBefore = items
     items = reduceUpdate(items, update)
 
     if (update.sessionUpdate === 'session_info_update' && update.title) {
@@ -968,14 +983,17 @@ function applyOne(s: AppState, events: AcpStreamEvent[]): Partial<AppState> {
       }
     }
 
-    const trimmed = trimSessionItems(items, MAX_ITEMS_PER_SESSION, s.locale)
-
     // 只有「真有内容产出」的通知才算新活动。
     //  · 重放期间（suppressActivityUntil）收到的一律不算 —— 否则点开会话就会顶到最前
     //  · 标题/命令/配置这类元数据更新也不算活动
     const now = Date.now()
     const until = suppressActivityUntil[sessionId] ?? 0
     const isSuppressed = until > now
+    // 重放不算：历史里没有这条客户端提示。实时又有内容时，先撤掉挡在中间的「已结束」，再裁剪。
+    if (!isSuppressed && items !== itemsBefore) {
+      items = withoutSupersededIdleNotices(items)
+    }
+    const trimmed = trimSessionItems(items, MAX_ITEMS_PER_SESSION, s.locale)
     const metadataOnly = METADATA_UPDATES.has(update.sessionUpdate)
     const wasActive = !isSuppressed && !metadataOnly
 
@@ -1318,6 +1336,7 @@ export const useStore = create<AppState>()(
             kind,
             createdAt: Date.now(),
             updatedAt: Date.now(),
+            engagedAt: Date.now(),
             items: [],
             configOptions: configOptions ?? [],
             commands: []
@@ -1350,6 +1369,8 @@ export const useStore = create<AppState>()(
             pendingEffort: s.preferredEffort ?? undefined,
             createdAt: Date.now(),
             updatedAt: Date.now(),
+            // 不写 engagedAt：只点「＋」还没发消息时，项目分组不能被这条空草稿顶上去。
+            // 首发时 pushUserMessage / materializeDraft 才会写入。
             items: [],
             // 草稿本身没有 ACP 选项；挂上缓存目录供 Header 渲染（currentValue 用 preferred 覆盖）
             configOptions: catalog.map((o) => {
@@ -1364,15 +1385,17 @@ export const useStore = create<AppState>()(
             }),
             commands: []
           }
-          // 对齐 Cursor：未发消息的草稿不进侧栏；再建时先撤掉其它空草稿
-          // （输入框还有未发送内容的草稿不算空，会保留，但仍不在侧栏显示）
+          // 再建时先撤掉其它空草稿（输入框还有未发送内容的不算空，会保留）。
+          // 当前这条立刻出现在侧栏对应工作目录下，分组若被折起则展开。
           const dropped = s.sessions.filter((x) => isDisposableDraft(x, s.running, s.composerDrafts))
           const kept = s.sessions.filter((x) => !isDisposableDraft(x, s.running, s.composerDrafts))
           let composerDrafts = s.composerDrafts
           for (const d of dropped) composerDrafts = dropComposerDraft(composerDrafts, d.id)
+          const groupKey = normalizeDir(cwd).toLowerCase()
           return {
             sessions: [session, ...kept].slice(0, MAX_SESSIONS),
             activeId: id,
+            collapsedGroups: s.collapsedGroups.filter((k) => k !== groupKey),
             composerDrafts,
             // 冷启动从其它会话挖出的目录写回，避免下次还要再扫
             configOptionCatalog: catalog,
@@ -1393,7 +1416,8 @@ export const useStore = create<AppState>()(
             pendingModel: undefined,
             pendingEffort: undefined,
             configOptions: configOptions ?? [],
-            updatedAt: Date.now()
+            updatedAt: Date.now(),
+            engagedAt: Date.now()
           }
           const sessions = s.sessions.map((x) => (x.id === draftId ? real : x))
           const pending = s.pendingUserMessages[draftId]
@@ -1442,6 +1466,14 @@ export const useStore = create<AppState>()(
           const next = mergeConfigCatalog(s.configOptionCatalog, options)
           return next === s.configOptionCatalog ? {} : { configOptionCatalog: next }
         }),
+
+      applySessionConfig: (sessionId, options) =>
+        set((s) => ({
+          configOptionCatalog: mergeConfigCatalog(s.configOptionCatalog, options),
+          sessions: s.sessions.map((x) =>
+            x.id === sessionId ? { ...x, configOptions: options } : x
+          )
+        })),
 
       setDraftConfig: (sessionId, configId, value) =>
         set((s) => ({
@@ -1767,7 +1799,9 @@ advanceReplayProgress: (sessionId, applied) =>
                     items: [...finalize(x.items), item],
                     updatedAt: now,
                     // 与 applyOne 同理：用户开口即算活动，不能让旧 activityAt 压住
-                    activityAt: now
+                    activityAt: now,
+                    // 项目分组只在这一刻挪位；之后的流式输出不改 engagedAt
+                    engagedAt: now
                   }
                 : x
             )
@@ -1791,7 +1825,7 @@ advanceReplayProgress: (sessionId, applied) =>
        */
       applyStreamBatch: (events) => set((s) => applyOne(s, events)),
 
-      appendNotice: (sessionId, text, level = 'info') =>
+      appendNotice: (sessionId, text, level = 'info', code) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === sessionId
@@ -1799,7 +1833,14 @@ advanceReplayProgress: (sessionId, applied) =>
                   ...x,
                   items: [
                     ...finalize(x.items),
-                    { kind: 'notice', id: uid(), text, level, at: Date.now() } as ChatItem
+                    {
+                      kind: 'notice',
+                      id: uid(),
+                      text,
+                      level,
+                      at: Date.now(),
+                      ...(code ? { code } : {})
+                    } as ChatItem
                   ],
                   updatedAt: Date.now()
                 }
@@ -1956,7 +1997,15 @@ advanceReplayProgress: (sessionId, applied) =>
         const { autoApprove: _legacy, ...rest } = p
         // 旧持久化可能残留空草稿；启动时一律丢掉（草稿本就不该落盘）
         const rawSessions = (rest.sessions ?? current.sessions) as SessionMeta[]
-        const sessions = rawSessions.filter((x) => !x.isDraft)
+        const sessions = rawSessions
+          .filter((x) => !x.isDraft)
+          // 旧数据没有 engagedAt。用当时的活动时间钉一次，之后流式输出不再改它，
+          // 这样升级后项目顺序停在升级前的位置，而不是继续跟着 token 跳。
+          .map((x) =>
+            x.engagedAt != null
+              ? x
+              : { ...x, engagedAt: x.activityAt ?? x.updatedAt ?? x.createdAt }
+          )
         // 冷启动不恢复上次聚焦的会话：进空白草稿（App.bootstrapBlankSession）。
         // cwd 先校正为最近活动目录，避免首帧仍用过期的全局默认。
         const cwd =
@@ -1976,7 +2025,9 @@ advanceReplayProgress: (sessionId, applied) =>
           configOptionCatalog: catalog,
           preferredModel: rest.preferredModel ?? current.preferredModel,
           preferredEffort: rest.preferredEffort ?? current.preferredEffort,
-          permissionMode: p.permissionMode ?? legacy ?? current.permissionMode,
+          permissionMode: coercePermissionMode(
+            p.permissionMode ?? legacy ?? current.permissionMode
+          ),
           // 旧版本持久化数据里没有这个键；显式兜底防止 rest 里的 undefined 覆盖默认值
           expandedToolCalls: p.expandedToolCalls ?? current.expandedToolCalls,
           collapsedToolCalls: p.collapsedToolCalls ?? current.collapsedToolCalls,

@@ -117,8 +117,8 @@ export const panels: typeof zh = {
     quotaResetHours: (vars) => `resets in ${vars.hours}h`,
     quotaDescFallback: 'Data from the grok account service (same as the /usage Usage limit page in the terminal)',
     quotaLoading: 'Loading quota…',
-    quotaUnavailable: (vars) =>
-      `Quota info unavailable${vars.error ? ` (${vars.error})` : ''}. It cannot be read while signed out or offline; the proxy must work in "Diagnostics".`,
+    quotaUnavailable:
+      'Quota info unavailable. It cannot be read while signed out or offline; the proxy must work in "Diagnostics".',
     quotaUsed: (vars) => `${vars.period} used`,
     quotaRemaining: (vars) => `${vars.percent}% left`,
     quotaPrepaid: (vars) => `Prepaid balance ${vars.balance}`,
