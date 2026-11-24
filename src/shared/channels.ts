@@ -31,6 +31,8 @@ export const CH = {
   sessionStoragePath: 'session:storage-path',
   /** 批量读取会话在磁盘上的真实活动时间（events.jsonl 最后一条 ts），用于侧栏排序 */
   sessionActivity: 'session:activity',
+  /** 扫 ~/.grok/sessions，把 WorkHub / 终端建的会话列进侧栏 */
+  sessionListDisk: 'session:list-disk',
   /** 删除会话在磁盘上的落盘目录（走回收站，可还原） */
   sessionDeleteData: 'session:delete-data',
   /** 把会话的落盘目录搬到另一个工作目录下（grok 没有「改会话工作目录」的接口，只能搬目录） */

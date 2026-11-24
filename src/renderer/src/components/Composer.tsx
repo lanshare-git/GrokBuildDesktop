@@ -53,6 +53,7 @@ export default function Composer(): JSX.Element {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const paletteRef = useRef<HTMLDivElement>(null)
   const activeId = useStore((s) => s.activeId)
   const running = useStore((s) => s.running.includes(activeId ?? ''))
   /**
@@ -161,6 +162,18 @@ export default function Composer(): JSX.Element {
   useEffect(() => {
     setPaletteIndex(0)
   }, [filteredCommands])
+
+  // 只滚列表自己。scrollIntoView 会把侧栏和顶栏一起滚出视口。
+  useEffect(() => {
+    const root = paletteRef.current
+    if (!root || !showPalette) return
+    const el = root.querySelector<HTMLElement>('.cmd-item-active')
+    if (!el) return
+    const top = el.offsetTop
+    const bottom = top + el.offsetHeight
+    if (top < root.scrollTop) root.scrollTop = top
+    else if (bottom > root.scrollTop + root.clientHeight) root.scrollTop = bottom - root.clientHeight
+  }, [paletteIndex, showPalette, filteredCommands])
 
   // 当前是否为 /imagine-video（用于显示参数面板）
   const isImagineVideo = /^\/imagine-video(\s|$)/i.test(text)
@@ -373,7 +386,7 @@ export default function Composer(): JSX.Element {
           之前这里还有一条「正在加载历史对话，可先输入…」+ spinner，与顶部横幅重复，
           两处同时出现太吵。输入框本来就保持可用（不 disabled），不需要额外解释。 */}
       {showPalette && (
-        <div className="cmd-palette" role="listbox">
+        <div className="cmd-palette" role="listbox" ref={paletteRef}>
           {filteredCommands.map((c, i) => (
             <button
               key={c.name}

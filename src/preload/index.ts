@@ -60,6 +60,7 @@ const api: GrokDesktopApi = {
     ipcRenderer.invoke(CH.sessionStoragePath, { cwd, sessionId }),
   sessionActivity: (items: Array<{ sessionId: string; cwd: string }>) =>
     ipcRenderer.invoke(CH.sessionActivity, items),
+  listDiskSessions: () => ipcRenderer.invoke(CH.sessionListDisk),
   sessionDeleteData: (args: { cwd: string; sessionId: string }) =>
     ipcRenderer.invoke(CH.sessionDeleteData, args),
   sessionMoveData: (args: { sessionId: string; fromCwd: string; toCwd: string }) =>

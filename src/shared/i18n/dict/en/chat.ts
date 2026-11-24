@@ -17,6 +17,7 @@ export const chat: typeof zh = {
   readyLine2:
     'The agent can read/write files, run commands, and search code — same capabilities as terminal Grok Build.',
   agentWorking: 'Agent is working…',
+  scrollToLatest: 'Jump to latest',
   historyTrimmed: (vars: { n: number; max: number }) =>
     `Conversation is long — ${vars.n} earlier tool/thinking items were folded (UI keeps ~${vars.max}). Your messages are kept.`,
   turnIdleCancelled:

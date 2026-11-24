@@ -16,13 +16,14 @@ import {
   groupSessionsByWorkspace,
   relativeTime,
   sameDir,
-  sessionActivityAt,
+  sessionListOrderAt,
   sessionDisplayTitle,
   splitGroupSessions
 } from '../utils'
 import type { WorkspaceGroup } from '../utils'
-import type { SessionMeta, SessionSearchHit } from '@shared/types'
+import type { SessionMeta } from '@shared/types'
 import ConfirmDialog from './ConfirmDialog'
+import SessionSearchPanel from './SessionSearchPanel'
 import type { ConfirmSpec } from './ConfirmDialog'
 import AccountMenu from './AccountMenu'
 import DirPickerMenu from './DirPickerMenu'
@@ -98,10 +99,9 @@ export default function Sidebar(): JSX.Element {
   /** 「新建任务」的目录选择弹层（锚点为顶部新建按钮） */
   const [dirMenuOpen, setDirMenuOpen] = useState(false)
   const newTaskRef = useRef<HTMLButtonElement | null>(null)
-  /** 会话搜索：查询词 + 主进程返回的命中（标题命中优先，其次正文片段） */
+  /** 会话搜索词。结果在侧栏右侧的弹层里，不改侧栏列表 */
   const [query, setQuery] = useState('')
-  const [hits, setHits] = useState<SessionSearchHit[] | null>(null)
-  const [searching, setSearching] = useState(false)
+  const searchRef = useRef<HTMLDivElement | null>(null)
   const [toolsFor, setToolsFor] = useState<{
     session: SessionMeta
     point: { x: number; y: number }
@@ -136,50 +136,9 @@ export default function Sidebar(): JSX.Element {
     }
   }, [])
 
-  // 搜索：防抖 220ms 触发，且**只搜前 120 个会话**（侧栏本身最多保留 60 个会话元数据，
-  // 顺序即活动排序，足够覆盖「最近做过的事」）。正文扫描在主进程侧流式进行。
-  useEffect(() => {
-    const q = query.trim()
-    if (!q) {
-      setHits(null)
-      setSearching(false)
-      return
-    }
-    let alive = true
-    setSearching(true)
-    const timer = window.setTimeout(() => {
-      void window.grok
-        .sessionSearch(
-          q,
-          sessions
-            .filter((s) => !s.isDraft)
-            .slice(0, 120)
-            .map((s) => ({ sessionId: s.id, cwd: s.cwd, title: sessionDisplayTitle(s, locale) }))
-        )
-        .then((res) => {
-          if (alive) setHits(res)
-        })
-        .catch(() => {
-          if (alive) setHits([])
-        })
-    }, 220)
-    return () => {
-      alive = false
-      window.clearTimeout(timer)
-    }
-  }, [query, sessions, locale])
-
-  const hitIds = hits ? new Set(hits.map((h) => h.sessionId)) : null
-  const hitSnippet = (id: string): string | null =>
-    hits?.find((h) => h.sessionId === id && h.where === 'content')?.snippet ?? null
-
-  // 搜索态下只展示命中的会话；分组结构保留，避免整页塌成一张平铺列表。
-  // 未发送的新任务也留在对应工作目录下（点「新建任务」就能在列表里看到它）。
-  // 搜索候选不含草稿，所以有搜索词时这条不会混进结果。
-  const visibleSessions = hitIds ? sessions.filter((s) => hitIds.has(s.id)) : sessions
   const groups = useMemo(
-    () => groupSessionsByWorkspace(visibleSessions, workspaces, homeDir, locale),
-    [visibleSessions, workspaces, homeDir, locale]
+    () => groupSessionsByWorkspace(sessions, workspaces, homeDir, locale),
+    [sessions, workspaces, homeDir, locale]
   )
 
   // 优先级：待你处理 > 输出中 > 还没发出 > 做完未读 > 空闲（对齐 Cursor）
@@ -572,19 +531,23 @@ export default function Sidebar(): JSX.Element {
         {t('chat.newChat')}
       </button>
 
-      <div className="sidebar-search">
+      <div className="sidebar-search" ref={searchRef}>
         <IconSearch size={13} />
         <input
           value={query}
           spellCheck={false}
           placeholder={t('sidebar.searchPlaceholder')}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value
+            setQuery(next)
+            // 弹层开着时，悬停详情卡会盖住结果
+            if (next.trim()) cancelPreview()
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') setQuery('')
           }}
         />
-        {searching && <span className="sidebar-search-flag">…</span>}
-        {query && !searching && (
+        {query && (
           <button
             className="icon-btn"
             title={t('sidebar.clearSearch')}
@@ -594,11 +557,6 @@ export default function Sidebar(): JSX.Element {
           </button>
         )}
       </div>
-      {hits && (
-        <div className="sidebar-search-hint">
-          {t('sidebar.searchHits', { n: hits.length })}
-        </div>
-      )}
 
       <div className="sidebar-section-label">{t('sidebar.workspacesLabel')}</div>
 
@@ -739,7 +697,6 @@ export default function Sidebar(): JSX.Element {
                   {(() => {
                     const opened = expandedSessionGroups.includes(group.key)
                     const { shown, folded } = splitGroupSessions(group.sessions, { pinnedIds })
-                    const queryActive = query.trim().length > 0
                     const renderSession = (session: SessionMeta): JSX.Element => {
                     const title = sessionDisplayTitle(session, locale)
                     const isRenaming = editingSessionId === session.id
@@ -767,8 +724,9 @@ export default function Sidebar(): JSX.Element {
                         }}
                         onDragEnd={endDrag}
                         onMouseEnter={(e) => {
-                          // 改名中不弹：输入框正在抢焦点，卡片只会挡视线；拖拽中也不弹
-                          if (!isRenaming && !dragSessionId) {
+                          // 改名中不弹：输入框正在抢焦点，卡片只会挡视线；拖拽中也不弹。
+                          // 搜索弹层开着时也不弹，卡片和结果叠在同一侧。
+                          if (!isRenaming && !dragSessionId && !query.trim()) {
                             schedulePreview(session.id, e.currentTarget)
                           }
                         }}
@@ -843,12 +801,7 @@ export default function Sidebar(): JSX.Element {
                             {!isRenaming && (
                               <div className="session-item-sub">
                                 {/* 状态只靠左侧色点（+ title 提示），不再塞文字标签抢标题宽度 */}
-                                <span>{relativeTime(sessionActivityAt(session), locale)}</span>
-                              </div>
-                            )}
-                            {!isRenaming && hitSnippet(session.id) && (
-                              <div className="session-item-hit" title={hitSnippet(session.id) ?? ''}>
-                                {hitSnippet(session.id)}
+                                <span>{relativeTime(sessionListOrderAt(session), locale)}</span>
                               </div>
                             )}
                           </div>
@@ -871,10 +824,13 @@ export default function Sidebar(): JSX.Element {
                       </div>
                     )
                     }
+                    // 展开后按原顺序渲染全部会话，「收起」跟在整组末尾。
+                    // 插在预览和其余会话之间时，多出来的几条会把这一行顶到列表半中间。
+                    const rows = opened ? group.sessions : shown
                     return (
                       <>
-                        {shown.map(renderSession)}
-                        {folded.length > 0 && !queryActive && (
+                        {rows.map(renderSession)}
+                        {folded.length > 0 && (
                           <button
                             type="button"
                             className="ws-more"
@@ -889,14 +845,13 @@ export default function Sidebar(): JSX.Element {
                           >
                             <IconChevron
                               size={12}
-                              className={`ws-caret${opened ? '' : ' is-collapsed'}`}
+                              className={`ws-caret${opened ? ' is-up' : ''}`}
                             />
                             {opened
                               ? t('sidebar.collapseSessions')
                               : t('sidebar.moreSessions', { n: folded.length })}
                           </button>
                         )}
-                        {(opened || queryActive) && folded.map(renderSession)}
                       </>
                     )
                   })()}
@@ -925,7 +880,7 @@ export default function Sidebar(): JSX.Element {
                     : t('sidebar.tagUnread')}
               </span>
             )}
-            <span className="session-preview-time">{relativeTime(sessionActivityAt(previewSession), locale)}</span>
+            <span className="session-preview-time">{relativeTime(sessionListOrderAt(previewSession), locale)}</span>
           </div>
           <div className="session-preview-cwd">
             <IconFolder size={12} />
@@ -1033,6 +988,9 @@ export default function Sidebar(): JSX.Element {
         />
       )}
 
+      {query.trim() && (
+        <SessionSearchPanel query={query} anchorRef={searchRef} onClose={() => setQuery('')} />
+      )}
       {confirm && <ConfirmDialog spec={confirm} onClose={() => setConfirm(null)} />}
       {accountMenuOpen && (
         <AccountMenu anchor={accountRef.current} onClose={() => setAccountMenuOpen(false)} />

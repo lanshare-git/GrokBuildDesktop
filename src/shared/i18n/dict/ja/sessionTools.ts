@@ -9,12 +9,6 @@ export const sessionTools: typeof zh = {
   tracing: 'パッケージ化中…',
   traceTitleDraft: '下書きセッションはまだ保存されていないため、診断パッケージをエクスポートできません',
   traceTitle: '診断データをエクスポート（ローカルにのみ保存、アップロードしません）',
-  unload: 'セッションをアンロード（データは保持）',
-  unloading: 'アンロード中…',
-  unloadTitleRunning: '生成中のためアンロードできません',
-  unloadTitleLoaded:
-    'agent プロセス内でこのセッションが占有しているメモリを解放します。ディスク上のデータは保持されます（現在のセッションは直ちに再読み込みされます）',
-  unloadTitleUnloaded: 'このセッションは現在 agent プロセス内にないため、アンロードの必要はありません',
   moveLabel: '作業ディレクトリに移動',
   moveTitleRunning: '生成中です。このラウンドが終わってから移動してください',
   moveTitle: (vars: { path: string }) =>
@@ -24,8 +18,6 @@ export const sessionTools: typeof zh = {
   exported: (vars: { path: string }) => `${vars.path} にエクスポートしました`,
   failed: (vars: { message: string }) => `エクスポートに失敗しました：${vars.message}`,
   traceDone: (vars: { path: string }) => `診断パッケージを作成しました：${vars.path}`,
-  unloaded: 'agent からアンロードしました（ディスク上のデータは保持されます）',
-  unloadFailed: (vars: { message: string }) => `アンロードに失敗しました：${vars.message}`,
   unknownError: '不明なエラー',
 
   dir: {

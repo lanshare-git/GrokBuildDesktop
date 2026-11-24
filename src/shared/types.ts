@@ -256,23 +256,24 @@ export interface SessionMeta {
   /**
    * 会话最后活动时间。**优先取磁盘真值**（磁盘 events.jsonl 末条 ts，字段 activityAt），
    * 只在没有磁盘真值时才回落到这里由客户端记的时间。
-   * 排序一律走 `sessionActivityAt()`，不要直接读本字段 —— 客户端记的值会被
-   * 重放污染（见 store.ts 的说明）。
+   * 不要直接读本字段做排序 —— 客户端记的值会被重放污染（见 store.ts）。
+   * 侧栏顺序与相对时间走 `sessionListOrderAt()`（`engagedAt`），不走这里。
    */
   updatedAt: number
   /**
    * 会话真实活动时间（ms）。来源：
    *  1) 启动/加载/回合结束时主进程从磁盘 events.jsonl 的 turn_* 回填；
    *  2) 回合进行中客户端在真实流式更新与发消息时同步刷成现在。
-   * 侧栏优先读它（`sessionActivityAt`），避免 updatedAt 被 session/load 重放污染；
-   * 也避免「只刷 updatedAt、旧 activityAt 压住正在进行的回合」。
-   * 只用于组内会话排序和相对时间，不用于项目分组顺序（那会在两个项目同时输出时对调）。
+   * 侧栏不拿它排序，也不拿它显示相对时间：流式输出会不断刷新，
+   * 同一目录里两个正在跑的任务会随每个 token 对调。
+   * 组内顺序与侧栏时间走 `engagedAt`（`sessionListOrderAt`）。
+   * 它仍用来表达「最后有内容产出」，并避开 updatedAt 被 session/load 重放污染。
    */
   activityAt?: number
   /**
-   * 项目分组的排序锚点（ms）。只在用户发出消息时写入（含草稿首发）。
+   * 侧栏排序锚点（ms）：组内会话和项目分组都用它。只在用户发出消息时写入（含草稿首发）。
    * 只点侧栏「＋」建出的空草稿不写它，否则项目还没开口就会被顶到最前。
-   * 流式输出不更新它。两个项目同时在跑时若按 activityAt 排，每个 token 都会让项目对调。
+   * 流式输出不更新它。若按 activityAt 排，两个正在跑的任务会随每个 token 对调。
    */
   engagedAt?: number
   items: ChatItem[]
@@ -281,6 +282,25 @@ export interface SessionMeta {
   commands: AvailableCommand[]
   /** 上一次 turn 的用量统计 */
   usage?: TurnUsage
+  /**
+   * 从 `~/.grok/sessions` 扫进来的会话（WorkHub / 终端），不是本窗口建的。
+   * 这种会话的用户消息发生在别的进程里，本窗口看不到「发出」的瞬间，
+   * 所以用 summary 的 last_active_at 补侧栏锚点 `engagedAt`。
+   * 本窗口自己的会话不要打这个标记，否则磁盘时间会把侧栏顺序重新打乱。
+   */
+  diskImported?: boolean
+}
+
+/**
+ * `~/.grok/sessions/<cwd>/<id>/summary.json` 里侧栏需要的那几个字段。
+ * cwd 是 summary 原文，不能先规范化（见 main/session-index.ts）。
+ */
+export interface DiskSessionRecord {
+  id: string
+  cwd: string
+  title: string
+  createdAt: number
+  updatedAt: number
 }
 
 /** 工作目录：别名与手动登记的目录（会话分组以此为准） */

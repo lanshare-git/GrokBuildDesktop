@@ -10,6 +10,12 @@ export const sidebar: typeof zh = {
     vars.n === 0
       ? 'No sessions matched — try a shorter keyword'
       : `${vars.n} ${vars.n === 1 ? 'session' : 'sessions'} matched`,
+  searching: 'Searching…',
+  searchWhereTitle: 'Title match',
+  searchKeys: '↑↓ select · Enter open · Esc close',
+  searchAllProjects: 'All',
+  searchHitsFiltered: (vars: { n: number; total: number }) =>
+    `${vars.n} of ${vars.total} sessions matched`,
   workspacesLabel: 'Workspaces',
   noSessions: 'No sessions yet',
   noChats: 'No chats yet',

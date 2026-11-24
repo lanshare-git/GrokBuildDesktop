@@ -10,6 +10,12 @@ export const sidebar: typeof zh = {
     vars.n === 0
       ? 'セッションが見つかりません。短いキーワードを試してください'
       : `${vars.n} 件のセッションがヒットしました`,
+  searching: '検索中…',
+  searchWhereTitle: 'タイトル一致',
+  searchKeys: '↑↓ 選択 · Enter 開く · Esc 閉じる',
+  searchAllProjects: 'すべて',
+  searchHitsFiltered: (vars: { n: number; total: number }) =>
+    `${vars.n} / ${vars.total} 件のセッションがヒットしました`,
   workspacesLabel: '作業ディレクトリ',
   noSessions: 'まだセッションがありません',
   noChats: 'まだチャットがありません',

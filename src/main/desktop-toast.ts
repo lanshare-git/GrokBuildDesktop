@@ -5,6 +5,8 @@
  * 在 Windows 上又不支持带按钮。所以后台 / 非当前会话的待授权改弹这个独立小窗：
  * 用户可直接点允许/拒绝，无需把主窗口唤回来。
  * 底部「前往处理」才唤起主窗口并切到发出授权的那条会话。
+ * 弹出本身不抢焦点：窗口不可聚焦，并用 showInactive 显示。
+ * 鼠标仍可点允许/拒绝；只有「前往处理」才会把主窗口唤到前台。
  */
 
 import { app, BrowserWindow, screen } from 'electron'
@@ -355,7 +357,9 @@ export function showDesktopPermToast(payload: DesktopPermToast): void {
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    focusable: true,
+    // show() 会在 Windows 上激活窗口，把正在打字的其它应用焦点抢走。
+    // 不可聚焦不等于点不了：鼠标仍能点允许/拒绝，点击也不会把本窗变成前台。
+    focusable: false,
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
@@ -378,7 +382,7 @@ export function showDesktopPermToast(payload: DesktopPermToast): void {
       if (win.isDestroyed()) return
       const index = [...openToasts.keys()].indexOf(payload.requestId)
       await fitAndPlace(win, Math.max(0, index))
-      if (!win.isDestroyed()) win.show()
+      if (!win.isDestroyed()) win.showInactive()
     })()
   })
 

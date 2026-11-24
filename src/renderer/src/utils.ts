@@ -43,14 +43,27 @@ export function sessionDisplayTitle(session: SessionMeta, locale: Locale): strin
 }
 
 /**
- * 会话的「最后活动时间」——排序与相对时间显示都用它。
+ * 会话的「最后有内容产出」的时间。
  *
  * 优先用 `activityAt`：启动/加载时由磁盘 turn_* 回填（忽略 mcp_*），
  * 回合进行中由客户端在真实流式更新与发消息时同步刷新。
  * 没有 activityAt 时才回落到 `updatedAt`（后者易被 session/load 重放污染）。
+ * 侧栏顺序和时间不读它：流式输出会不断刷新，两个任务同时在跑就会对调。
  */
 export function sessionActivityAt(session: SessionMeta): number {
   return session.activityAt ?? session.updatedAt
+}
+
+/**
+ * 侧栏组内的排序与相对时间。只认用户发出消息的时刻。
+ *
+ * 与 Cursor 的 agent 列表同一条规则：`lastUpdatedAt` 在回合开始时写一次，
+ * 流式 token 不再改它，顺序用这个时间，相同则用 id 兜底。
+ * 这里对应 `engagedAt`。没有锚点（空草稿、旧数据）退回创建时间，创建时间也不变。
+ * 空草稿因此仍出现在本组最前，但不会把整个项目分组顶上去（那条走 sessionGroupOrderAt）。
+ */
+export function sessionListOrderAt(session: SessionMeta): number {
+  return session.engagedAt ?? session.createdAt
 }
 
 /**
@@ -154,14 +167,15 @@ export function groupSessionsByWorkspace(
 
   const list = [...groups.values()]
   for (const group of list) {
-    // 组内：最近活动在前（用 sessionActivityAt，磁盘真值优先）。
-    // 时间相同（同一秒新建的多个会话）时用创建时间、id 兜底，
-    // 保证顺序完全由数据决定 —— 否则 Array.sort 之外再无约束，渲染一次就可能换位。
+    // 组内：最近一次发出消息在前。流式输出不改 engagedAt，
+    // 同一目录里两个正在跑的任务不会随 token 对调。
+    // 时间相同再用创建时间、id 兜底。id 相等必须返回 0，
+    // 否则比较器不对称，同键的两行仍可能换位。
     group.sessions.sort(
       (a, b) =>
-        sessionActivityAt(b) - sessionActivityAt(a) ||
+        sessionListOrderAt(b) - sessionListOrderAt(a) ||
         b.createdAt - a.createdAt ||
-        (a.id < b.id ? -1 : 1)
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
     )
     // 项目顺序看「用户最近一次发消息」，不看刚才谁吐了一个 token，
     // 也不看只点了「＋」还没发出去的草稿。
@@ -193,7 +207,7 @@ export const SIDEBAR_GROUP_PREVIEW = 8
 
 /**
  * 把一个工作目录里的会话分成「默认露出」和「收进更多」。
- * 调用方须已按活动时间从新到旧排序。
+ * 调用方须已按发出消息的时间从新到旧排序。
  *
  * 当前打开、正在生成、待响应、未读算钉住：偏旧也留在露出区，并计入 limit。
  * 剩下的名额用最近的空闲会话补满。钉住的已经不少于 limit 时，空闲会话全部收起。

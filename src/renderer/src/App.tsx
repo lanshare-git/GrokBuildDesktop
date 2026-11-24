@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react'
 import {
   bootstrapBlankSession,
   cleanError,
+  importDiskSessions,
   connectAgent,
+  installAgentSessionReleaser,
   newChatSession,
   onAgentTurnCompleted,
   refreshAccount,
@@ -66,6 +68,9 @@ export default function App(): JSX.Element {
     void window.grok.reportActiveSession(activeId)
   }, [activeId])
 
+  // 离开的会话从长驻 agent 里释放；正在生成或还有后台任务的先留着
+  useEffect(() => installAgentSessionReleaser(), [])
+
   // 任务栏角标（对齐 Cursor）：橙=要你处理，蓝=做完未读
   useEffect(() => {
     if (!window.grok?.reportTaskbarBadge) return
@@ -91,8 +96,20 @@ export default function App(): JSX.Element {
     bootBlank()
     const unsubHydration =
       typeof useStore.persist?.onFinishHydration === 'function'
-        ? useStore.persist.onFinishHydration(bootBlank)
+        ? useStore.persist.onFinishHydration(() => {
+            bootBlank()
+            void importDiskSessions()
+          })
         : undefined
+    if (useStore.persist.hasHydrated()) void importDiskSessions()
+    // WorkHub 里新开的会话：切回这个窗口时补一次，开着不动时也定期扫
+    const onFocus = (): void => {
+      void importDiskSessions()
+    }
+    window.addEventListener('focus', onFocus)
+    const diskTimer = window.setInterval(() => {
+      void importDiskSessions()
+    }, 20_000)
 
     const unsubscribers = [
       window.grok.onState((e) => {
@@ -233,6 +250,8 @@ export default function App(): JSX.Element {
 
     return () => {
       unsubHydration?.()
+      window.removeEventListener('focus', onFocus)
+      window.clearInterval(diskTimer)
       unsubscribers.forEach((off) => off())
     }
   }, [])

@@ -6,7 +6,7 @@
 
 **Grok Build Desktop** —— Grok Build 终端版的 Electron 桌面客户端（Electron 33 + React 18 + TypeScript + electron-vite 2.3）。
 
-核心设计：**不重新实现模型调用**。桌面端作为 ACP（Agent Client Protocol）客户端 spawn `grok agent stdio`，登录态、模型、工具链、会话、记忆、插件全部复用终端版（`~/.grok`）。一个应用实例只维护一个 agent 长驻进程，多会话共用。
+核心设计：**不重新实现模型调用**。桌面端作为 ACP（Agent Client Protocol）客户端 spawn `grok agent stdio`，登录态、模型、工具链、会话、记忆、插件全部复用终端版（`~/.grok`）。一个应用实例只维护一个 agent 长驻进程。用户正在看的会话、以及仍在生成 / 有未答授权或后台任务的会话留在这个进程里；离开且已经闲下来的会话自动 `session/close`，磁盘和侧栏保留，下次点开再 `session/load`。不要把「卸载会话」放回右键菜单。
 
 ```
 渲染进程 (React)  ──IPC(contextBridge)──▶  主进程 AcpClient (JSON-RPC over stdio)  ──spawn──▶  grok agent stdio
@@ -81,7 +81,7 @@ src/
    升完版本再跑 `npm run typecheck` 与打包。
 1. **会话 cwd 不可变**。ACP 没有改目录接口，且 grok 按 cwd 分目录存会话（`~/.grok/sessions/<url-encoded cwd>/<sessionId>`）。「换工作目录」只能新建会话。给目录「改名」的唯一手段是 `store.workspaces` 里的 `alias`（展示层映射）。
 2. **会话改名只写 `SessionMeta.customTitle`，不要写回 `title`**。`title` 是 grok 的自动标题，会被下一次 `session_info_update` 冲掉。
-3. **`updatedAt` 只表示「真有内容产出」**。`session/load` 重放、元数据类更新（session_info_update / available_commands_update / config_option_update）不得刷新它。实现靠 `store.suppressActivityUntil`（`beginSessionReload` 屏蔽 → `endSessionReload` 在 `finally` 中解屏蔽并留 1.2s 静默窗）。**改这块务必保留 finally 解屏蔽**，否则抛错后该会话永远不再刷新活动时间。排序另有确定性兜底键（组内 `activityAt→createdAt→id`、项目分组 `engagedAt→key`）。项目分组只认用户发消息写入的 `engagedAt`。只点侧栏「＋」建出的空草稿不写 `engagedAt`，排序时也不拿它的 `createdAt` 顶替，否则项目会在还没发消息时被顶到最前。流式输出刷新的 `activityAt` 不得用来排项目，否则两个项目同时在跑时顺序会来回对调。
+3. **`updatedAt` 只表示「真有内容产出」**。`session/load` 重放、元数据类更新（session_info_update / available_commands_update / config_option_update）不得刷新它。实现靠 `store.suppressActivityUntil`（`beginSessionReload` 屏蔽 → `endSessionReload` 在 `finally` 中解屏蔽并留 1.2s 静默窗）。**改这块务必保留 finally 解屏蔽**，否则抛错后该会话永远不再刷新活动时间。排序另有确定性兜底键（组内 `engagedAt→createdAt→id`、项目分组 `engagedAt→key`）。组内会话和项目分组都只认用户发消息写入的 `engagedAt`，不认流式输出刷新的 `activityAt`。同一目录里两个任务同时在跑时，若按 `activityAt` 排，每个 token 都会让这两行对调。空草稿没有 `engagedAt`，组内用 `createdAt` 留在本组最前；项目分组排序时不拿这个 `createdAt` 顶替，否则项目会在还没发消息时被顶到最前。
 4. **权限模式界面提供 5 种**（ACP `session/set_mode`）：`default` / `auto` / `bypassPermissions` / `acceptEdits` / `dontAsk`。选项定义在 `shared/types.ts` 的 `PERMISSION_MODE_OPTIONS`，store 字段 `permissionMode`（旧布尔 `autoApprove` 有 persist 迁移）。ACP 的 `plan` 只是 Claude 兼容占位，**不拦截写文件**，不要再放进下拉，也不要拿它当只读锁。主目录纯聊天锁定为 `dontAsk`（`LOCKED_CHAT_PERMISSION_MODE`）。持久化或调用里残留的 `plan` 由 `coercePermissionMode` 改成 `dontAsk`。
    - **实时改是支持的，但对「已经弹出的那条」无效**（最常见的困惑）：`setPermissionMode`（service.ts:552）只发 `session/set_mode`，**完全不碰 `pendingPermissions`**。权限请求是请求-响应式，发出那一刻就已经决定要问了；切模式只影响**之后**的工具调用决策，**不会撤回已在等待批准的那条**。所以「切到完全访问了怎么还在弹」——那条弹窗是切换**之前**发出的，手动点掉即可，之后的调用就真的不弹了。
    - **另一条静默失效路径**：`Header` 切模式走 `void applyPermissionModeToSession(...)`（actions.ts:129），会话不在 `loadedSessions` 时整个函数**直接 return、静默不报错**（UI 照常显示新模式）。判据：会话正跑着（有流/有弹窗）就说明它已 loaded，不适用这条；真正的未 loaded 场景（刚重连、被 closeSession 卸载过）切模式确实会丢，此时**发一条消息**可触发补同步（actions.ts:266）。

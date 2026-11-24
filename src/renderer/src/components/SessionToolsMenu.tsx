@@ -1,16 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
-import {
-  closeAgentSession,
-  exportSessionMarkdown,
-  exportSessionTrace,
-  resumeSession
-} from '../actions'
+import { exportSessionMarkdown, exportSessionTrace, resumeSession } from '../actions'
 import { useT } from '../i18n'
 import { useStore } from '../store'
 import { sessionDisplayTitle } from '../utils'
 import type { SessionMeta } from '@shared/types'
-import { IconDownload, IconFile, IconFolder, IconLongShot, IconPower, IconTrash } from './Icons'
+import { IconDownload, IconFile, IconFolder, IconLongShot, IconTrash } from './Icons'
 
 /** 「移动到工作目录」的候选目标 */
 export interface MoveTarget {
@@ -20,9 +15,8 @@ export interface MoveTarget {
 }
 
 /**
- * 会话工具菜单 —— 补齐终端 `grok export` / `grok trace` 的桌面入口，
- * 外加一个 ACP `session/close`（卸载）：只释放 agent 进程里该会话的副本，
- * 磁盘数据与会话列表都不动，下次打开会重新加载历史。
+ * 会话工具菜单 —— 补齐终端 `grok export` / `grok trace` 的桌面入口。
+ * 离开会话后的进程内释放由 actions.ts 自动做，不放进菜单。
  *
  * 排障项（长截屏、导出诊断包）默认隐藏：打开菜单后按 Shift，或 Shift+右键打开才露出。
  *
@@ -52,7 +46,6 @@ export default function SessionToolsMenu({
   onRequestDelete: () => void
   openedWithShift?: boolean
 }): JSX.Element | null {
-  const loadedSessions = useStore((s) => s.loadedSessions)
   const running = useStore((s) => s.running)
   const t = useT()
   const locale = useStore((s) => s.locale)
@@ -100,8 +93,7 @@ export default function SessionToolsMenu({
   if (!pos) return null
 
   const title = sessionDisplayTitle(session, locale)
-  const isLoaded = loadedSessions.includes(session.id)
-  // 生成中不允许卸载：那一回合还占着 agent 的会话 actor，关掉会打断输出
+  // 生成中不许搬目录：那一回合还占着 agent 的会话 actor
   const isRunning = running.includes(session.id)
 
   const doExport = async (): Promise<void> => {
@@ -157,18 +149,6 @@ export default function SessionToolsMenu({
     }
   }
 
-  const doClose = async (): Promise<void> => {
-    setBusy('close')
-    try {
-      await closeAgentSession(session.id)
-      setNote(t('sessionTools.unloaded'))
-    } catch (err) {
-      setNote(t('sessionTools.unloadFailed', { message: err instanceof Error ? err.message : String(err) }))
-    } finally {
-      setBusy(null)
-    }
-  }
-
   return (
     <div className="account-menu session-tools" ref={menuRef} style={pos} role="menu">
       <div className="account-menu-head">
@@ -213,23 +193,6 @@ export default function SessionToolsMenu({
           </button>
         </>
       )}
-
-      <button
-        className="account-menu-item"
-        role="menuitem"
-        disabled={busy !== null || !isLoaded || isRunning}
-        title={
-          isRunning
-            ? t('sessionTools.unloadTitleRunning')
-            : isLoaded
-              ? t('sessionTools.unloadTitleLoaded')
-              : t('sessionTools.unloadTitleUnloaded')
-        }
-        onClick={() => void doClose()}
-      >
-        <IconPower size={15} />
-        {busy === 'close' ? t('sessionTools.unloading') : t('sessionTools.unload')}
-      </button>
 
       <div className="account-menu-sep" />
 

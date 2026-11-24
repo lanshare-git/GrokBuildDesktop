@@ -7,6 +7,7 @@ import type {
   BackgroundTask,
   ChatItem,
   ConfigOption,
+  DiskSessionRecord,
   ConnectionState,
   DiagnosticsReport,
   GrokAccount,
@@ -55,7 +56,48 @@ export type SettingsSection =
   | 'diagnostics'
   | 'about'
 
-const MAX_SESSIONS = 60
+/**
+ * 侧栏会话条数上限。只留元数据（非当前会话的 items 不落盘），
+ * 把 WorkHub / 终端里已有的会话合并进来之后，60 条会把刚扫到的项目从尾部裁掉。
+ */
+const MAX_SESSIONS = 400
+
+/**
+ * 超出上限时丢掉最久没发过消息的会话。
+ * 不能按数组尾部切：扫盘补进来的会话在尾部，一刀切会把 WorkHub 整组切掉。
+ * `pin` 里的 id（当前这条、草稿）不参与淘汰。
+ */
+function capSessions(sessions: SessionMeta[], pin: ReadonlySet<string>): SessionMeta[] {
+  if (sessions.length <= MAX_SESSIONS) return sessions
+  const ranked = sessions
+    .filter((x) => !pin.has(x.id))
+    .sort(
+      (a, b) =>
+        (b.engagedAt ?? b.createdAt) - (a.engagedAt ?? a.createdAt) ||
+        b.createdAt - a.createdAt ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    )
+  const room = Math.max(0, MAX_SESSIONS - pin.size)
+  const keep = new Set<string>(pin)
+  for (const session of ranked.slice(0, room)) keep.add(session.id)
+  return sessions.filter((x) => keep.has(x.id))
+}
+
+/** 上一轮扫盘把「没有自动标题」写成了这句占位。下一轮扫描要把这些行拿掉。 */
+const IMPORTED_PLACEHOLDER_TITLES = new Set(['未命名会话', 'Untitled session', '無題のセッション'])
+
+function isPlaceholderImport(session: SessionMeta): boolean {
+  if (!session.diskImported || session.customTitle?.trim()) return false
+  const title = session.title.trim()
+  return !title || IMPORTED_PLACEHOLDER_TITLES.has(title)
+}
+
+function sessionPin(sessions: SessionMeta[], extra: Array<string | null | undefined>): Set<string> {
+  const pin = new Set<string>()
+  for (const id of extra) if (id) pin.add(id)
+  for (const session of sessions) if (session.isDraft) pin.add(session.id)
+  return pin
+}
 /**
  * 极端兜底上限（正常长对话靠 ChatView 虚拟列表撑 DOM，不靠砍历史）。
  * 仅在单会话条目失控时触发；仍优先保留全部用户消息。
@@ -688,6 +730,11 @@ interface AppState {
   pendingUserMessages: Record<string, Extract<ChatItem, { kind: 'user' }>[]>
   /** 工作目录登记表：别名 + 手动添加的目录（会话本身的 cwd 由 grok 决定，不在这里） */
   workspaces: WorkspaceMeta[]
+  /**
+   * 用户从侧栏移除、但磁盘文件还在的会话 id。
+   * 扫盘合并时跳过，否则「只从列表移除」会在下一轮扫描被加回来。
+   */
+  dismissedSessionIds: string[]
   /** 侧栏里折叠起来的分组（存规范化小写路径） */
   collapsedGroups: string[]
   /**
@@ -790,6 +837,11 @@ interface AppState {
   materializeDraft(draftId: string, meta: { id: string; configOptions?: ConfigOption[] }): void
   selectSession(id: string | null): void
   deleteSession(id: string): void
+  /**
+   * 把磁盘上已有、本窗口还没有的会话补进侧栏。
+   * 已存在的本窗口会话不动 engagedAt。已标记 diskImported 的，用较新的磁盘时间补锚点。
+   */
+  mergeDiskSessions(records: DiskSessionRecord[]): void
   /** 写入/更新某会话的输入框草稿；text 与附件皆空则删除该键 */
   setComposerDraft(sessionId: string, draft: ComposerDraft): void
   clearComposerDraft(sessionId: string): void
@@ -1050,6 +1102,7 @@ function applyOne(s: AppState, events: AcpStreamEvent[]): Partial<AppState> {
 type PersistedState = Pick<
   AppState,
   | 'sessions'
+  | 'dismissedSessionIds'
   | 'activeId'
   | 'cwd'
   | 'permissionMode'
@@ -1143,6 +1196,7 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       connection: { state: 'idle' },
       sessions: [],
+      dismissedSessionIds: [],
       activeId: null,
       cwd: '',
       homeDir: '',
@@ -1342,7 +1396,7 @@ export const useStore = create<AppState>()(
             commands: []
           }
           return {
-            sessions: [session, ...s.sessions].slice(0, MAX_SESSIONS),
+            sessions: capSessions([session, ...s.sessions], sessionPin(s.sessions, [id, s.activeId])),
             activeId: id,
             loadedSessions: [...s.loadedSessions, id],
             configOptionCatalog: mergeConfigCatalog(s.configOptionCatalog, configOptions),
@@ -1393,7 +1447,7 @@ export const useStore = create<AppState>()(
           for (const d of dropped) composerDrafts = dropComposerDraft(composerDrafts, d.id)
           const groupKey = normalizeDir(cwd).toLowerCase()
           return {
-            sessions: [session, ...kept].slice(0, MAX_SESSIONS),
+            sessions: capSessions([session, ...kept], sessionPin(kept, [id, s.activeId])),
             activeId: id,
             collapsedGroups: s.collapsedGroups.filter((k) => k !== groupKey),
             composerDrafts,
@@ -1547,8 +1601,13 @@ export const useStore = create<AppState>()(
             delete next[id]
             return next
           }
+          // 草稿没有磁盘目录，不必记。真实会话记下来，下一轮扫盘才不会把它加回来。
+          const dismissedSessionIds = id.startsWith('draft:')
+            ? s.dismissedSessionIds
+            : [...s.dismissedSessionIds.filter((x) => x !== id), id].slice(-2000)
           return {
             sessions,
+            dismissedSessionIds,
             activeId: s.activeId === id ? (sessions[0]?.id ?? null) : s.activeId,
             loadedSessions: s.loadedSessions.filter((x) => x !== id),
             running: s.running.filter((x) => x !== id),
@@ -1559,6 +1618,90 @@ export const useStore = create<AppState>()(
             replayProgress: dropKey(s.replayProgress),
             pendingUserMessages: dropKey(s.pendingUserMessages),
             composerDrafts: dropComposerDraft(s.composerDrafts, id)
+          }
+        }),
+
+      mergeDiskSessions: (records) =>
+        set((s) => {
+          if (!Array.isArray(records) || records.length === 0) return {}
+          const dismissed = new Set(s.dismissedSessionIds ?? [])
+          const byId = new Map(s.sessions.map((x) => [x.id, x]))
+          const busy = new Set([...s.running, ...s.loadedSessions])
+          let sessions = s.sessions
+          let changed = false
+          const additions: SessionMeta[] = []
+
+          const replace = (id: string, next: SessionMeta): void => {
+            if (sessions === s.sessions) sessions = sessions.slice()
+            changed = true
+            const idx = sessions.findIndex((x) => x.id === id)
+            if (idx >= 0) sessions[idx] = next
+          }
+
+          for (const rec of records) {
+            if (!rec || typeof rec.id !== 'string' || typeof rec.cwd !== 'string' || !rec.cwd) continue
+            if (dismissed.has(rec.id)) continue
+            const at = rec.updatedAt || rec.createdAt || 0
+            const existing = byId.get(rec.id)
+            if (!existing) {
+              if (!rec.title.trim()) continue
+              const stamp = at || rec.createdAt || 0
+              additions.push({
+                id: rec.id,
+                title: rec.title.trim(),
+                cwd: rec.cwd,
+                createdAt: rec.createdAt || stamp,
+                updatedAt: stamp,
+                activityAt: stamp || undefined,
+                engagedAt: stamp || undefined,
+                items: [],
+                configOptions: [],
+                commands: [],
+                diskImported: true
+              })
+              changed = true
+              continue
+            }
+            // 本窗口自己的会话：锚点只在这里发消息时写，不用磁盘时间回写
+            if (!existing.diskImported) continue
+            if (busy.has(existing.id)) continue
+            let next = existing
+            if (at > (existing.engagedAt ?? 0)) {
+              next = {
+                ...next,
+                engagedAt: at,
+                updatedAt: Math.max(existing.updatedAt, at),
+                activityAt: at
+              }
+            }
+            if (rec.title && !existing.customTitle && rec.title !== existing.title) {
+              next = { ...next, title: rec.title }
+            }
+            if (next !== existing) {
+              replace(existing.id, next)
+              byId.set(existing.id, next)
+            }
+          }
+
+          const listed = new Set(records.map((rec) => rec.id))
+          const withoutPlaceholders = sessions.filter(
+            (session) =>
+              !isPlaceholderImport(session) || session.id === s.activeId || listed.has(session.id)
+          )
+          if (withoutPlaceholders.length !== sessions.length) {
+            sessions = withoutPlaceholders
+            changed = true
+          }
+
+          if (!changed) return {}
+          if (additions.length > 0) {
+            additions.sort(
+              (a, b) => (b.engagedAt ?? b.createdAt) - (a.engagedAt ?? a.createdAt)
+            )
+            sessions = [...additions, ...sessions]
+          }
+          return {
+            sessions: capSessions(sessions, sessionPin(sessions, [s.activeId]))
           }
         }),
 
@@ -2012,6 +2155,9 @@ advanceReplayProgress: (sessionId, applied) =>
           mostRecentWorkspaceCwd(sessions) ||
           (typeof rest.cwd === 'string' && rest.cwd ? normalizeDir(rest.cwd) : '') ||
           current.cwd
+        const dismissedSessionIds = Array.isArray(p.dismissedSessionIds)
+          ? p.dismissedSessionIds.filter((id): id is string => typeof id === 'string')
+          : []
         const catalog =
           (rest.configOptionCatalog && rest.configOptionCatalog.length > 0
             ? rest.configOptionCatalog
@@ -2020,6 +2166,7 @@ advanceReplayProgress: (sessionId, applied) =>
           ...current,
           ...rest,
           sessions,
+          dismissedSessionIds,
           activeId: null,
           cwd,
           configOptionCatalog: catalog,
@@ -2069,6 +2216,7 @@ advanceReplayProgress: (sessionId, applied) =>
             : (sessions[0]?.id ?? null)
         return {
           sessions,
+          dismissedSessionIds: s.dismissedSessionIds,
           activeId,
           cwd: s.cwd,
           permissionMode: s.permissionMode,

@@ -14,6 +14,8 @@ export const chat = {
   readyLine1: '会话已就绪，开始描述你想做的事。',
   readyLine2: 'Agent 可以读写文件、执行命令、检索代码——与终端版 Grok Build 能力一致。',
   agentWorking: 'Agent 正在工作…',
+  /** 会话未贴底时，右下角一键滚到最新输出 */
+  scrollToLatest: '回到最新',
   /** 会话条目超上限裁剪时提示（用户消息会保留） */
   historyTrimmed: (vars: { n: number; max: number }) =>
     `会话过长，已折叠较早的 ${vars.n} 条工具/思考记录（界面最多保留约 ${vars.max} 条）。你发出的消息仍会保留。`,

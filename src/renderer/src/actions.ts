@@ -96,7 +96,7 @@ export async function purgeSessionData(session: {
  *  2. **先卸载**（若已加载）—— 不卸载时 grok 持有该会话的文件句柄，目录 rename 会被占用拦下；
  *  3. 搬磁盘目录；
  *  4. 更新 store 的 cwd（侧栏分组/排序都由它派生）；
- *  5. 若是当前会话，立刻以新 cwd 重新加载（卸载过就必须重建历史，见 closeAgentSession 的说明）。
+ *  5. 若是当前会话，立刻以新 cwd 重新加载（卸载过就必须重建历史）。
  */
 export async function moveSessionToWorkspace(
   session: { id: string; cwd: string; isDraft?: boolean },
@@ -273,6 +273,29 @@ export function bootstrapBlankSession(cwd?: string): void {
   store.createDraftSession({ cwd: target, permissionMode: store.permissionMode })
 }
 
+/** 扫盘进行中就跳过下一轮，避免焦点和定时器叠在一起读同一批 summary */
+let diskImportInFlight = false
+
+/**
+ * 把 ~/.grok/sessions 里本窗口还没有的会话补进侧栏。
+ * WorkHub、终端和这个窗口共用一份会话目录，但侧栏原先只记自己建过的。
+ * 必须等 persist 水合完再写，否则水合会用旧列表把刚补上的会话盖掉。
+ */
+export async function importDiskSessions(): Promise<void> {
+  if (!useStore.persist.hasHydrated()) return
+  if (!window.grok?.listDiskSessions) return
+  if (diskImportInFlight) return
+  diskImportInFlight = true
+  try {
+    const list = await window.grok.listDiskSessions()
+    useStore.getState().mergeDiskSessions(list)
+  } catch {
+    /* 主进程还没就绪时下一轮再试 */
+  } finally {
+    diskImportInFlight = false
+  }
+}
+
 /**
  * 新建会话：先只建一个「本地草稿」（不调 grok 的 session/new，磁盘不落文件），
  * 用户首次发送时再由 sendPrompt 真正 newSession 并 materialize。
@@ -337,6 +360,9 @@ async function resumeSessionInner(sessionId: string, cwd: string): Promise<void>
     return
   }
   store.selectSession(sessionId)
+  // 切回来时，离开时发起的 session/close 可能还在飞。等它落定再判断是否已加载，
+  // 否则会拿着「已加载」去 prompt 一个主进程已经丢掉的会话。
+  await waitForAgentSessionRelease(sessionId)
 
   const ready = await connectAgent()
   if (!ready) return
@@ -491,6 +517,8 @@ export async function sendPrompt(text: string, images?: ImageAttachment[]): Prom
     // 应用重启后 agent 进程是全新的，未加载过的会话必须先 session/load，
     // 否则 session/prompt 会报 Invalid params (unknown session id)。
     // （草稿 materialize 后已在 agent 中新建并标记 loaded，会跳过此分支。）
+    // 离开后的自动释放可能还在 close。先等它结束，再决定要不要 session/load。
+    await waitForAgentSessionRelease(activeId)
     const st = useStore.getState()
     const alreadyReloading = st.reloadingSessions.includes(activeId)
     if (!st.loadedSessions.includes(activeId) && !alreadyReloading) {
@@ -855,28 +883,113 @@ export async function exportSessionTrace(session: {
 }
 
 /**
- * 卸载会话（释放 agent 进程内的副本，磁盘数据不动）。
+ * 离开一场对话后，把它从长驻 agent 进程里丢掉。
  *
- * ⚠️ 卸载后本地历史与 agent 里的副本就「不同步」了：下次发送会触发 session/load 重放，
- * 而重放是**追加**语义 —— 直接发消息会让同一段历史在界面上出现两遍。
- * 因此这里必须把这条路径堵死：
- *  1. forgetLoadedSession 清掉「已加载」标记（否则永远不会再 load，两边永久错位）；
- *  2. 若卸载的正是当前会话，立刻 resumeSession 重新加载（走 beginSessionReload 清空 +
- *     重放重建），让界面回到「已加载」的一致状态。
- * 非当前会话则保持 items 不动，等用户下次点开时由 resumeSession 统一重建。
+ * 不为一场对话拉一个进程：每个 `grok agent` 都是一整份运行时，离开就退出会更重。
+ * 用户不再看的会话走 ACP `session/close`，磁盘和侧栏都留着，下次点开由 resumeSession 重放。
+ * 正在看的、正在生成的、还有未答的授权/提问、或后台任务仍在跑的，留在进程里。
+ *
+ * ⚠️ close 之后本地历史与 agent 副本不同步。必须 forgetLoadedSession，下次打开才能重新 load。
+ * 重放是追加语义，不能在「仍标记已加载」时再 load。
  */
-export async function closeAgentSession(sessionId: string): Promise<void> {
-  const store = useStore.getState()
-  const isActive = store.activeId === sessionId
-  const cwd = store.sessions.find((x) => x.id === sessionId)?.cwd ?? ''
-  try {
-    await window.grok.closeSession(sessionId)
-    store.forgetLoadedSession(sessionId)
-    if (isActive && cwd) await resumeSession(sessionId, cwd)
-  } catch (err) {
-    store.pushLog(`[close] 卸载会话失败：${cleanError(err)}\n`)
-    throw err
+const releaseTokens = new Map<string, number>()
+const releaseInflight = new Map<string, Promise<void>>()
+
+function bumpReleaseToken(sessionId: string): number {
+  const next = (releaseTokens.get(sessionId) ?? 0) + 1
+  releaseTokens.set(sessionId, next)
+  return next
+}
+
+/** 这场对话还被用户看着，或 agent 里还有没做完的事 */
+function sessionStillNeeded(sessionId: string): boolean {
+  const s = useStore.getState()
+  if (s.activeId === sessionId) return true
+  if (s.running.includes(sessionId)) return true
+  if ((activeTurns.get(sessionId) ?? 0) > 0) return true
+  if (s.reloadingSessions.includes(sessionId)) return true
+  if (s.permissions.some((p) => p.sessionId === sessionId)) return true
+  if (s.questions.some((q) => q.sessionId === sessionId)) return true
+  const tasks = s.backgroundTasks[sessionId]
+  // 没有明确结束的都算还在跑（缺省状态、子代理、monitor、loop）
+  if (tasks?.some((t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled')) {
+    return true
   }
+  return false
+}
+
+/** 切回这场对话的人要等离开时的 close 落定，避免对已关闭的会话发 prompt */
+export function waitForAgentSessionRelease(sessionId: string): Promise<void> {
+  return releaseInflight.get(sessionId) ?? Promise.resolve()
+}
+
+async function releaseOneAgentSession(sessionId: string): Promise<void> {
+  const existing = releaseInflight.get(sessionId)
+  if (existing) return existing
+  if (sessionStillNeeded(sessionId)) return
+  if (!useStore.getState().loadedSessions.includes(sessionId)) return
+
+  const token = bumpReleaseToken(sessionId)
+  const job = (async () => {
+    // 微任务里可能已经切回来了。这时还没发 close，保持已加载即可。
+    if (releaseTokens.get(sessionId) !== token || sessionStillNeeded(sessionId)) return
+    try {
+      await window.grok.closeSession(sessionId)
+    } catch (err) {
+      // 主进程在发出 close 之前就已经从 knownSessions 摘掉了。
+      // 失败也要忘掉「已加载」，否则下次发送会打到一个已经不在的会话上。
+      useStore.getState().pushLog(`[close] 离开会话后释放失败：${cleanError(err)}\n`)
+    }
+    // close 已经发出。中途切回来的 resumeSession 正在等这个 promise，清掉标记后由它重新 load。
+    useStore.getState().forgetLoadedSession(sessionId)
+  })()
+
+  releaseInflight.set(sessionId, job)
+  try {
+    await job
+  } finally {
+    if (releaseInflight.get(sessionId) === job) releaseInflight.delete(sessionId)
+  }
+}
+
+let releaseQueued = false
+
+/** 把已经不看、也没有在飞工作的会话从 agent 进程里释放掉 */
+export function releaseIdleAgentSessions(): void {
+  if (releaseQueued) return
+  releaseQueued = true
+  queueMicrotask(() => {
+    releaseQueued = false
+    const loaded = useStore.getState().loadedSessions
+    for (const id of loaded) {
+      if (sessionStillNeeded(id)) continue
+      void releaseOneAgentSession(id)
+    }
+  })
+}
+
+/**
+ * 订阅侧栏切换、回合结束、授权/提问落地、后台任务变化，自动释放不再看的会话。
+ * 切回某场对话时作废它尚未发出的 close。
+ */
+export function installAgentSessionReleaser(): () => void {
+  return useStore.subscribe((state, prev) => {
+    if (state.activeId && state.activeId !== prev.activeId) {
+      bumpReleaseToken(state.activeId)
+    }
+    if (
+      state.activeId === prev.activeId &&
+      state.running === prev.running &&
+      state.loadedSessions === prev.loadedSessions &&
+      state.permissions === prev.permissions &&
+      state.questions === prev.questions &&
+      state.backgroundTasks === prev.backgroundTasks &&
+      state.reloadingSessions === prev.reloadingSessions
+    ) {
+      return
+    }
+    releaseIdleAgentSessions()
+  })
 }
 
 /** 在指定 git 仓库里建 worktree 并以其为工作目录新建任务（等价终端 `grok -w`） */

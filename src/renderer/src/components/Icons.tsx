@@ -65,6 +65,12 @@ export const IconChevron = ({ size = 16, className }: IconProps): JSX.Element =>
   </svg>
 )
 
+export const IconChevronDown = ({ size = 16, className }: IconProps): JSX.Element => (
+  <svg {...base(size, className)}>
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+)
+
 export const IconCheck = ({ size = 16, className }: IconProps): JSX.Element => (
   <svg {...base(size, className)}>
     <path d="M4 12l5 5L20 6" />

@@ -9,12 +9,6 @@ export const sessionTools: typeof zh = {
   tracing: 'Packaging…',
   traceTitleDraft: 'Draft sessions are not persisted yet, so no diagnostics bundle can be exported',
   traceTitle: 'Export diagnostics data (saved locally only, never uploaded)',
-  unload: 'Unload session (keep data)',
-  unloading: 'Unloading…',
-  unloadTitleRunning: 'Generating — cannot unload',
-  unloadTitleLoaded:
-    'Release the memory held by this session in the agent process; on-disk data is kept (the current session reloads immediately)',
-  unloadTitleUnloaded: 'This session is not currently in the agent process; nothing to unload',
   moveLabel: 'Move to workspace',
   moveTitleRunning: 'Generating — wait for the current round to finish before moving',
   moveTitle: (vars: { path: string }) =>
@@ -24,8 +18,6 @@ export const sessionTools: typeof zh = {
   exported: (vars: { path: string }) => `Exported to ${vars.path}`,
   failed: (vars: { message: string }) => `Export failed: ${vars.message}`,
   traceDone: (vars: { path: string }) => `Diagnostics bundle created: ${vars.path}`,
-  unloaded: 'Unloaded from the agent (on-disk data kept)',
-  unloadFailed: (vars: { message: string }) => `Unload failed: ${vars.message}`,
   unknownError: 'Unknown error',
 
   dir: {

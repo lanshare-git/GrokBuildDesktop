@@ -12,6 +12,7 @@ import type {
   ConnectionEvent,
   DesktopPermToastMode,
   DiagnosticsReport,
+  DiskSessionRecord,
   DiskUsageReport,
   GrokAccount,
   GrokEnvInfo,
@@ -112,6 +113,11 @@ export interface GrokDesktopApi {
    * 正是侧栏时间被刷成「刚刚」的根因。查不到真实时间的会话不出现在结果里。
    */
   sessionActivity(items: Array<{ sessionId: string; cwd: string }>): Promise<Record<string, number>>
+  /**
+   * 磁盘上已有对话内容的 Grok 会话（含 WorkHub、终端）。
+   * 侧栏据此补上本窗口没建过的会话。cwd 是 summary 原文，加载时要原样传回。
+   */
+  listDiskSessions(): Promise<DiskSessionRecord[]>
   /**
    * 删除会话在磁盘上的落盘目录（`~/.grok/sessions/<编码cwd>/<sessionId>`）。
    * **不做不可逆直删**：优先系统回收站（`method:'trash'`），

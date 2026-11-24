@@ -12,6 +12,7 @@ import { readConfig, writeConfig } from './config'
 import { readModelConfigSeed, runDiagnostics } from './diagnostics'
 import { detectProxy } from './proxy'
 import { encodeSessionDir, readSessionActivity } from './session-activity'
+import { listDiskSessions } from './session-index'
 import { deleteSessionData } from './session-delete'
 import { moveSessionData } from './session-move'
 import { exportSessionMarkdown, exportSessionTrace } from './session-export'
@@ -276,6 +277,9 @@ export function registerIpc(service: AgentService): void {
     (_e, items: Array<{ sessionId: string; cwd: string }>) =>
       readSessionActivity(Array.isArray(items) ? items : [])
   )
+
+  // WorkHub / 终端建的会话也在 ~/.grok/sessions，侧栏启动后合并进来
+  ipcMain.handle(CH.sessionListDisk, () => listDiskSessions())
 
   // 删除会话在磁盘上的落盘目录（走回收站）。路径越界防护与错误语义见 main/session-delete.ts
   ipcMain.handle(CH.sessionDeleteData, (_e, args: { cwd: string; sessionId: string }) =>

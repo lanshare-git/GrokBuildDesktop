@@ -17,7 +17,7 @@ import ToolCallCard from './ToolCallCard'
 import ToolGroupCard from './ToolGroupCard'
 import ZoomableImage from './ZoomableImage'
 import { densityGroupsTools } from '@shared/types'
-import { IconCopy, IconEdit } from './Icons'
+import { IconChevronDown, IconCopy, IconEdit } from './Icons'
 
 type ToolItem = Extract<ChatItem, { kind: 'tool' }>
 type DisplayItem = ChatItem | { kind: 'tool-group'; id: string; items: ToolItem[] }
@@ -288,6 +288,12 @@ export default function ChatView(): JSX.Element {
   })
   const scrollerRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
+  /** 程序把滚动条拉到底期间，中间的 scroll 事件不要当成用户往上翻 */
+  const snappingRef = useRef(false)
+  /** 滚轮 / 拖滚动条之后的一小段时间内，scroll 才算用户主动离开底部 */
+  const userScrollRef = useRef(false)
+  const userScrollTimer = useRef(0)
+  const [showJump, setShowJump] = useState(false)
   const pendingUser = useStore((s) => {
     const id = s.activeId
     if (!id) return EMPTY_PENDING
@@ -372,19 +378,81 @@ export default function ChatView(): JSX.Element {
 
   // 用户向上翻阅时不打断；贴底时自动跟随（含 running-row，直接滚到底比 scrollToIndex 稳）
   useEffect(() => {
-    if (!pinnedRef.current) return
     const el = scrollerRef.current
     if (!el) return
+    if (!pinnedRef.current) {
+      setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight >= 80)
+      return
+    }
     requestAnimationFrame(() => {
       if (!pinnedRef.current || !scrollerRef.current) return
       scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight
     })
   }, [items, running])
 
+  useEffect(() => () => window.clearTimeout(userScrollTimer.current), [])
+
+  const markUserScroll = (): void => {
+    userScrollRef.current = true
+    window.clearTimeout(userScrollTimer.current)
+    userScrollTimer.current = window.setTimeout(() => {
+      userScrollRef.current = false
+    }, 150)
+  }
+
   const handleScroll = (): void => {
     const el = scrollerRef.current
     if (!el) return
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    // 拖滚动条只有一次 pointerdown，后续 scroll 要把「用户正在翻」续上
+    if (userScrollRef.current) {
+      window.clearTimeout(userScrollTimer.current)
+      userScrollTimer.current = window.setTimeout(() => {
+        userScrollRef.current = false
+      }, 200)
+    }
+    const away = el.scrollHeight - el.scrollTop - el.clientHeight >= 80
+    if (snappingRef.current) {
+      pinnedRef.current = true
+      setShowJump(false)
+      return
+    }
+    // 贴底跟随会改 scrollTop（且有 smooth），那些 scroll 不能把跟随掐掉，也不该闪出按钮
+    if (!userScrollRef.current && pinnedRef.current) {
+      if (!away) setShowJump(false)
+      return
+    }
+    pinnedRef.current = !away
+    setShowJump(away)
+  }
+
+  const jumpToLatest = (): void => {
+    const el = scrollerRef.current
+    if (!el) return
+    snappingRef.current = true
+    pinnedRef.current = true
+    setShowJump(false)
+    const prev = el.style.scrollBehavior
+    el.style.scrollBehavior = 'auto'
+    const snap = (): void => {
+      const node = scrollerRef.current
+      if (!node) return
+      node.scrollTop = node.scrollHeight
+    }
+    snap()
+    // 虚拟列表要等测量后总高度才稳定，再补一帧，避免停在半截并把 snapping 标志卡死
+    requestAnimationFrame(() => {
+      snap()
+      requestAnimationFrame(() => {
+        snap()
+        const node = scrollerRef.current
+        snappingRef.current = false
+        if (!node) return
+        node.style.scrollBehavior = prev
+        const away = node.scrollHeight - node.scrollTop - node.clientHeight >= 80
+        pinnedRef.current = !away
+        setShowJump(away)
+      })
+    })
   }
 
   const handleSubmitEdit = (itemId: string, text: string, images?: ImageAttachment[]): void => {
@@ -570,7 +638,15 @@ export default function ChatView(): JSX.Element {
     .join(' ')
 
   return (
-    <div className={chatClass} ref={scrollerRef} onScroll={handleScroll} onClick={onChatClick}>
+    <div className="chat-frame">
+      <div
+        className={chatClass}
+        ref={scrollerRef}
+        onScroll={handleScroll}
+        onClick={onChatClick}
+        onWheel={markUserScroll}
+        onPointerDown={markUserScroll}
+      >
       {longShotPicking && !longShotBusy && (
         <div className="long-shot-bar" role="status">
           <span className="long-shot-bar-hint">{t('chat.longShotPickHint')}</span>
@@ -689,6 +765,18 @@ export default function ChatView(): JSX.Element {
           </div>
         )}
       </div>
+      </div>
+      {showJump && !longShotPicking && !longShotBusy && (
+        <button
+          type="button"
+          className="chat-jump-latest"
+          title={t('chat.scrollToLatest')}
+          aria-label={t('chat.scrollToLatest')}
+          onClick={jumpToLatest}
+        >
+          <IconChevronDown size={16} />
+        </button>
+      )}
     </div>
   )
 }

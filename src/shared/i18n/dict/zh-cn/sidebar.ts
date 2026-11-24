@@ -5,6 +5,12 @@ export const sidebar = {
   clearSearch: '清空搜索',
   searchHits: (vars: { n: number }) =>
     `命中 ${vars.n} 个会话${vars.n === 0 ? '，试试更短的关键词' : ''}`,
+  searching: '正在搜索…',
+  searchWhereTitle: '标题匹配',
+  searchKeys: '↑↓ 选择 · Enter 打开 · Esc 关闭',
+  searchAllProjects: '全部',
+  searchHitsFiltered: (vars: { n: number; total: number }) =>
+    `命中 ${vars.n} / ${vars.total} 个会话`,
   workspacesLabel: '工作目录',
   noSessions: '还没有会话',
   noChats: '还没有聊天',
