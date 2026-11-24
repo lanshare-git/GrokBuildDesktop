@@ -23,6 +23,6 @@ export const header: typeof zh = {
   modeTitleChat: 'This session was moved from a chat; permission mode can be switched like a normal task',
   modeTitle: (vars: { desc: string }) => `Permission mode · ${vars.desc}`,
   usageTitle: (vars: { input: number; output: number; cacheRead: number }) =>
-    `Last turn: input ${vars.input} · output ${vars.output} · cache read ${vars.cacheRead}\nClick to view per-turn details for this session and totals across all sessions`,
+    `Last turn: input ${vars.input} · output ${vars.output} · cache read ${vars.cacheRead}\nDollars are the token list price; monthly plans use the weekly quota\nClick to view per-turn details for this session and totals across all sessions`,
   usageTitleEmpty: 'Usage: click to view per-turn details for this session and totals across all sessions'
 }

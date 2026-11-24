@@ -23,6 +23,6 @@ export const header: typeof zh = {
   modeTitleChat: 'このセッションはチャットから移動されました。通常タスクと同様に権限モードを切り替えられます',
   modeTitle: (vars: { desc: string }) => `権限モード · ${vars.desc}`,
   usageTitle: (vars: { input: number; output: number; cacheRead: number }) =>
-    `前回：入力 ${vars.input} · 出力 ${vars.output} · キャッシュ読み取り ${vars.cacheRead}\nクリックでこのセッションのターン別明細と全セッションの累計を表示`,
+    `前回：入力 ${vars.input} · 出力 ${vars.output} · キャッシュ読み取り ${vars.cacheRead}\nドルはトークン定価の換算です。月額プランは週間利用枠で計ります\nクリックでこのセッションのターン別明細と全セッションの累計を表示`,
   usageTitleEmpty: '使用量：クリックでこのセッションのターン別明細と全セッションの累計を表示'
 }

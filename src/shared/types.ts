@@ -36,7 +36,8 @@ export type ContentBlock = TextContentBlock | ResourceLinkBlock | ImageContentBl
 /**
  * 助手侧产出的媒体（图片/视频）。来源是 ACP `resource_link` / `image` 内容块，
  * 经 store 折叠进 assistant 消息。uri 是 grok 下发的原始地址（可能是 http(s) URL、
- * `file://`、本地绝对路径或内联 data URL），渲染前由 `window.grok.resolveAsset` 归一化。
+ * `file://`、本地绝对/相对路径或内联 data URL），渲染前由 `window.grok.resolveAsset` 归一化。
+ * 相对路径按会话工作目录拼接。
  */
 export interface MediaAttachment {
   kind: 'video' | 'image'
@@ -534,7 +535,8 @@ export interface GrokEnvInfo {
  *
  *  ⚠️ `inputTokens` **包含**缓存命中部分（cachedReadTokens 是它的子集），
  *     展示时必须写成「输入 X（其中缓存命中 Y）」，否则会重复计数。
- *  ⚠️ 花费字段叫 `costUsdTicks`，单位是 1e-9 美元（十亿美元分之一），要除以 1e9。
+ *  ⚠️ 参考价字段叫 `costUsdTicks`，1 USD = 10^10 ticks，要除以 1e10。
+ *     这是 token 牌价折算，包月不按这个数另扣；真正的额度是每周用量百分比。
  * ------------------------------------------------------------------ */
 
 export interface UsageTotals {
@@ -546,7 +548,7 @@ export interface UsageTotals {
   totalTokens: number
   /** 模型调用次数（一次用户输入可能触发多次模型调用） */
   modelCalls: number
-  /** 已结算花费（美元，由 ticks 换算而来） */
+  /** token 牌价折算（美元，由 ticks ÷ 1e10 而来）。包月不按这个数另扣。 */
   costUsd: number
   /** 用户轮数 */
   turnCount: number
@@ -579,7 +581,7 @@ export interface GlobalUsageReport {
   /** 扫过但没有 usage.json 的会话数（多为草稿/未产生消耗） */
   missingCount: number
   byModel: Array<{ modelId: string } & UsageTotals>
-  /** 花销最高的会话（降序） */
+  /** 参考价最高的会话（降序） */
   topSessions: Array<{
     sessionId: string
     title: string

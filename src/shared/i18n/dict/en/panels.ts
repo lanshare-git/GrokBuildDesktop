@@ -105,7 +105,7 @@ export const panels: typeof zh = {
     statOutputReasoning: (vars) => `incl. ${vars.n} reasoning`,
     statTotal: 'Total tokens',
     statModelCalls: (vars) => `${vars.n} model calls`,
-    statCost: 'Cost',
+    statCost: 'List price',
     statTurns: (vars) => (vars.n === 1 ? '1 turn' : `${vars.n} turns`),
     quotaTitle: 'Account quota',
     quotaPeriodWeekly: 'Weekly usage',
@@ -129,27 +129,27 @@ export const panels: typeof zh = {
     colOutput: 'Output',
     colTotal: 'Total tokens',
     colCalls: 'Calls',
-    colCost: 'Cost',
+    colCost: 'List price',
     totalTitle: 'All-session totals',
     totalDesc: (vars) =>
       `Covering ${vars.count} session${vars.count === 1 ? '' : 's'}${vars.missing > 0 ? `, ${vars.missing} without usage records` : ''}`,
     totalDescLoading: 'Counting…',
     totalEmpty: 'No usage records to count yet.',
-    topTitle: 'Top sessions by cost',
+    topTitle: 'Top sessions by list price',
     topDesc: (vars) => `Top ${vars.n}`,
     colSession: 'Session',
     colTurns: 'Turns',
     footnote:
-      'Quota is tracked on the xAI account side, independent of token billing: quota tells you how much is left; billing details tell you how much was used.'
+      'The weekly quota is what you have left. Dollars are the token list price; a monthly plan is not charged this amount on top.'
   },
   usageDialog: {
     title: 'Session usage',
-    subtitle: 'Data from the usage.json written by grok (equivalent to terminal grok usage; immune to history replay)',
+    subtitle: 'Monthly plans are metered by the weekly quota. Dollars here are the token list price, not an extra charge.',
     refreshTitle: 'Refresh',
     closeTitle: 'Close (Esc)',
     currentTitle: 'Current session',
     noSession: 'No session selected. Pick one on the left, or open "Settings → Usage" for account quota and all-session totals.',
-    noData: 'This session has no billable usage yet (no model calls made, or the session has not been written to disk).',
+    noData: 'This session has no usage record yet (no model calls made, or the session has not been written to disk).',
     meta: (vars) => `Primary model ${vars.model} · updated ${vars.time} · ${vars.source}`,
     sourceDisk: 'from usage.json',
     sourceCli: 'generated via grok usage fallback',
@@ -161,7 +161,7 @@ export const panels: typeof zh = {
     colOutput: 'Output',
     colReasoning: 'Reasoning',
     colTotal: 'Total tokens',
-    colCost: 'Cost'
+    colCost: 'List price'
   },
   version: {
     title: 'Version & Updates',

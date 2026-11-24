@@ -7,7 +7,10 @@
  * - 该文件**不受 session/load 重放影响**（重放只刷 mtime），数值可信。
  *
  * 两条单位/口径约定（写错就会算错钱，务必保留）：
- * - `costUsdTicks` 是 1e-9 美元（十亿美元分之一），要除以 1e9；
+ * - `costUsdTicks` 是 10^10 ticks = 1 美元，要除以 1e10。
+ *   依据是随 grok 安装的 user-guide（`grok usage` 与 headless 的
+ *   `total_cost_usd_ticks` 同一单位；例：126890500 ticks = $0.01268905）。
+ *   除以 1e9 会把参考价放大 10 倍。
  * - `inputTokens` **包含** `cachedReadTokens`（缓存命中是它的子集），展示时要写「其中」。
  */
 
@@ -24,8 +27,8 @@ import type {
   UsageTotals
 } from '../shared/types'
 
-/** ticks → 美元 */
-const TICKS_PER_USD = 1e9
+/** ticks → 美元。1 USD = 10^10 ticks。 */
+const TICKS_PER_USD = 1e10
 
 interface RawSlice {
   inputTokens?: number

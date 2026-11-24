@@ -15,7 +15,8 @@ import { IconClose, IconRefresh } from './Icons'
  *
  *  口径提醒（展示层必须守住，否则会让人以为算错了）：
  *  - `inputTokens` **包含**缓存命中部分，要写成「输入 X · 其中缓存命中 Y」；
- *  - 花费由 `costUsdTicks / 1e9` 换算而来，四位小数以下不必纠结精度。
+ *  - 参考价由 `costUsdTicks / 1e10` 换算而来，四位小数以下不必纠结精度。
+ *    这是 token 牌价，包月按每周额度计，不按这个数另扣。
  * ------------------------------------------------------------------ */
 
 function fmtCost(usd: number): string {

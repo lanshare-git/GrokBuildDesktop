@@ -105,7 +105,7 @@ export const panels: typeof zh = {
     statOutputReasoning: (vars) => `うち推論 ${vars.n}`,
     statTotal: '合計トークン',
     statModelCalls: (vars) => `モデル呼び出し ${vars.n} 回`,
-    statCost: 'コスト',
+    statCost: '参考価格',
     statTurns: (vars) => `${vars.n} ターンの会話`,
     quotaTitle: 'アカウント利用枠',
     quotaPeriodWeekly: '週間使用量',
@@ -129,27 +129,27 @@ export const panels: typeof zh = {
     colOutput: '出力',
     colTotal: '合計トークン',
     colCalls: '呼び出し',
-    colCost: 'コスト',
+    colCost: '参考価格',
     totalTitle: '全セッション累計',
     totalDesc: (vars) =>
       `${vars.count} 件のセッションを集計${vars.missing > 0 ? `、${vars.missing} 件は使用量記録なし` : ''}`,
     totalDescLoading: '集計中…',
     totalEmpty: '集計可能な使用量記録がまだありません。',
-    topTitle: 'コストの高いセッション',
+    topTitle: '参考価格の高いセッション',
     topDesc: (vars) => `上位 ${vars.n} 件`,
     colSession: 'セッション',
     colTurns: 'ターン数',
     footnote:
-      '利用枠は xAI アカウント側で集計され、トークン課金とは独立しています。利用枠は「あとどれだけ使えるか」、課金明細は「すでにどれだけ使ったか」を示します。'
+      '週間利用枠が残りの使用量です。ドル表示はトークン定価の換算で、月額プランからこの金額が別途引かれることはありません。'
   },
   usageDialog: {
     title: 'セッション使用量',
-    subtitle: 'データは grok が書き出す usage.json より（ターミナルの grok usage と同等。履歴再生の影響を受けません）',
+    subtitle: '月額プランは週間利用枠で計ります。ここのドルはトークン定価の換算で、月額から別途引かれません。',
     refreshTitle: '更新',
     closeTitle: '閉じる (Esc)',
     currentTitle: '現在のセッション',
     noSession: 'セッションが選択されていません。左側でセッションを選ぶか、「設定 → 使用量」でアカウント利用枠と全セッション累計を確認してください。',
-    noData: 'このセッションにはまだ課金対象の使用量がありません（モデル呼び出しがまだないか、セッションがまだディスクに書き込まれていません）。',
+    noData: 'このセッションにはまだ使用量の記録がありません（モデル呼び出しがまだないか、セッションがまだディスクに書き込まれていません）。',
     meta: (vars) => `メインモデル ${vars.model} · 集計時刻 ${vars.time} · ${vars.source}`,
     sourceDisk: 'usage.json より',
     sourceCli: 'grok usage によるフォールバック生成',
@@ -161,7 +161,7 @@ export const panels: typeof zh = {
     colOutput: '出力',
     colReasoning: '推論',
     colTotal: '合計トークン',
-    colCost: 'コスト'
+    colCost: '参考価格'
   },
   version: {
     title: 'バージョンと更新',

@@ -101,7 +101,7 @@ function MediaUrlFallback({ uri }: { uri: string }): JSX.Element {
   )
 }
 
-function MediaView({ media }: { media: MediaAttachment[] }): JSX.Element | null {
+function MediaView({ media, cwd }: { media: MediaAttachment[]; cwd?: string }): JSX.Element | null {
   const t = useT()
   /** uri → 已解析 URL；空串 = 解析失败 */
   const [srcs, setSrcs] = useState<Record<string, string | null>>({})
@@ -113,7 +113,7 @@ function MediaView({ media }: { media: MediaAttachment[] }): JSX.Element | null 
     void Promise.all(
       media.map(async (m) => {
         try {
-          const resolved = await window.grok.resolveAsset(m.uri)
+          const resolved = await window.grok.resolveAsset(m.uri, cwd)
           return [m.uri, resolved || null] as const
         } catch {
           return [m.uri, null] as const
@@ -128,7 +128,7 @@ function MediaView({ media }: { media: MediaAttachment[] }): JSX.Element | null 
     return () => {
       cancelled = true
     }
-  }, [media])
+  }, [media, cwd])
 
   const nodes = media.flatMap((m) => {
     if (failed[m.uri]) {
@@ -516,8 +516,8 @@ export default function ChatView(): JSX.Element {
         const media = item.media && item.media.length > 0 ? item.media : extractEmbeddedMedia(item.text)
         return (
           <div className="msg msg-assistant" data-long-shot-target="">
-            <Markdown text={item.text} />
-            {media.length > 0 && <MediaView media={media} />}
+            <Markdown text={item.text} cwd={session?.cwd} />
+            {media.length > 0 && <MediaView media={media} cwd={session?.cwd} />}
             {item.streaming && running && <span className="caret" />}
           </div>
         )

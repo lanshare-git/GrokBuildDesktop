@@ -1,10 +1,11 @@
 /**
- * 媒体资源桥接：把 grok 下发的媒体地址（file://、本地绝对路径、http(s)、data:）
+ * 媒体资源桥接：把 grok 下发的媒体地址（file://、本地绝对/相对路径、http(s)、data:）
  * 归一化为渲染进程可加载的 URL，并由 `grok-asset://` 协议处理器在本地磁盘读取文件。
  *
  * 为什么需要它：渲染进程（web 上下文）受 Electron 安全策略限制，无法直接加载
- * `file://` 或本地绝对路径。我们把本地路径编码进 `grok-asset://<base64url>` 这类私有
- * 协议，主进程按 Range 流式读出文件并返回，既能播放视频、也能支持拖动进度条。
+ * `file://` 或本地绝对路径。我们把本地路径编码进 `grok-asset://local/<base64url>`。
+ * 不能放在 host：这个 scheme 是 standard，Chromium 会把 host 转成小写，base64 对不上文件。
+ * 主进程按 Range 流式读出文件并返回，既能播放视频、也能支持拖动进度条。
  *
  * http(s) 也走主进程拉取：内网 TFS 附件等需要 NTLM/系统凭证，渲染进程直链会 CORS/401
  * 留下空图框；主进程用 Chromium `net.fetch`（可走系统凭证）拉到临时文件再转 grok-asset。
@@ -14,7 +15,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 import { net, protocol } from 'electron'
 
 /** 扩展名 -> MIME（覆盖 grok 视频/图片生成常见格式） */
@@ -71,16 +72,16 @@ function localPathToAsset(p: string): string {
   } catch {
     return ''
   }
-  return `grok-asset://${Buffer.from(p, 'utf8').toString('base64url')}`
+  const token = Buffer.from(p, 'utf8').toString('base64url')
+  return `grok-asset://local/${token}`
 }
 
-/** 把任意原始地址归一化为可加载的 URL（本地路径同步；http 请用 resolveAssetUriAsync） */
-export function resolveAssetUri(rawUri: string): string {
-  if (!rawUri) return ''
-  // data / 已编码协议：原样；http(s) 留给 async 拉（这里原样返回仅作兜底）
-  if (/^(data:|grok-asset:)/i.test(rawUri)) return rawUri
-  if (/^https?:/i.test(rawUri)) return rawUri
-
+/**
+ * 本地路径归一化。
+ * markdown 图片的 src 常被编成百分号（中文目录），且相对会话工作目录，
+ * 不能按主进程 cwd 去 existsSync。
+ */
+function normalizeLocalPath(rawUri: string, baseDir?: string): string {
   let p = rawUri
   // 去掉 file:// 前缀（兼容 file:///C:/... 与 file://C:/...）
   if (/^file:\/\//i.test(p)) p = p.slice(p.indexOf('://') + 3)
@@ -95,6 +96,23 @@ export function resolveAssetUri(rawUri: string): string {
   // 把 /C:/ 这类形式修正为 C:\
   p = p.replace(/^\\([a-zA-Z]):\\/, '$1:\\')
 
+  if (!isAbsolute(p)) {
+    const base = (baseDir || '').trim()
+    if (!base) return ''
+    p = resolvePath(base, p)
+  }
+  return p
+}
+
+/** 把任意原始地址归一化为可加载的 URL（本地路径同步；http 请用 resolveAssetUriAsync） */
+export function resolveAssetUri(rawUri: string, baseDir?: string): string {
+  if (!rawUri) return ''
+  // data / 已编码协议：原样；http(s) 留给 async 拉（这里原样返回仅作兜底）
+  if (/^(data:|grok-asset:)/i.test(rawUri)) return rawUri
+  if (/^https?:/i.test(rawUri)) return rawUri
+
+  const p = normalizeLocalPath(rawUri, baseDir)
+  if (!p) return ''
   // 本地文件不存在时返回空：渲染层据此不画空占位框（破图框看起来像异常）
   return localPathToAsset(p)
 }
@@ -149,11 +167,11 @@ async function fetchRemoteMedia(url: string): Promise<string> {
  * 异步归一化：本地路径同 resolveAssetUri；http(s) 由主进程拉取后缓存为 grok-asset://。
  * 拉失败返回空串（渲染层不画空框）。
  */
-export async function resolveAssetUriAsync(rawUri: string): Promise<string> {
+export async function resolveAssetUriAsync(rawUri: string, baseDir?: string): Promise<string> {
   if (!rawUri) return ''
   if (/^(data:|grok-asset:)/i.test(rawUri)) return rawUri
   if (/^https?:/i.test(rawUri)) return fetchRemoteMedia(rawUri)
-  return resolveAssetUri(rawUri)
+  return resolveAssetUri(rawUri, baseDir)
 }
 
 /** 注册 `grok-asset://` 协议，按请求 Range 流式读取本地媒体文件 */
@@ -161,8 +179,15 @@ export function registerAssetProtocol(): void {
   protocol.handle('grok-asset', async (request) => {
     try {
       const url = new URL(request.url)
-      // 主机部分即 base64url 编码的绝对路径（base64url 不含 /，故整段落在 host）
-      const path = Buffer.from(url.host, 'base64url').toString('utf8')
+      // pathname 保留大小写。旧地址把 token 放在 host，host 会被小写，只作兜底。
+      let fromPath = url.pathname.replace(/^\/+/, '')
+      try {
+        fromPath = decodeURIComponent(fromPath)
+      } catch {
+        /* token 本身不含需要解码的序列 */
+      }
+      const token = fromPath || url.host
+      const path = Buffer.from(token, 'base64url').toString('utf8')
       if (!path || !existsSync(path) || !statSync(path).isFile()) {
         return new Response('Not found', { status: 404 })
       }

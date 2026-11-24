@@ -181,9 +181,10 @@ export interface GrokDesktopApi {
   /**
    * 把 grok 下发的媒体地址归一化为可在渲染进程直接加载的 URL：
    * - http(s):// / data: / grok-asset:// 原样返回
-   * - file://… 或本地绝对路径 → 转成 `grok-asset://<base64url>`（由主进程协议处理器流式读取）
+   * - file://… 或本地绝对路径 → 转成 `grok-asset://local/<base64url>`（由主进程协议处理器流式读取）
+   * - 相对路径按 baseDir（会话工作目录）拼接后再转 grok-asset://
    */
-  resolveAsset(rawUri: string): Promise<string>
+  resolveAsset(rawUri: string, baseDir?: string): Promise<string>
 
   /* 代理 */
   getProxy(): Promise<ProxySettings>

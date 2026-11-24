@@ -68,7 +68,8 @@ const api: GrokDesktopApi = {
   screenshotSnip: () => ipcRenderer.invoke(CH.screenshotSnip),
   capturePageRect: (rect) => ipcRenderer.invoke(CH.capturePageRect, rect),
   saveLongShotPng: (args) => ipcRenderer.invoke(CH.saveLongShotPng, args),
-  resolveAsset: (rawUri: string) => ipcRenderer.invoke(CH.assetResolve, rawUri),
+  resolveAsset: (rawUri: string, baseDir?: string) =>
+    ipcRenderer.invoke(CH.assetResolve, rawUri, baseDir),
 
   getProxy: () => ipcRenderer.invoke(CH.proxyGet),
   setProxy: (proxy: string | null) => ipcRenderer.invoke(CH.proxySet, { proxy }),

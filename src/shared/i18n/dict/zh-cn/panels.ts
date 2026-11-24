@@ -106,7 +106,7 @@ export const panels = {
     statOutputReasoning: (vars: { n: string }) => `含推理 ${vars.n}`,
     statTotal: '总 token',
     statModelCalls: (vars: { n: string }) => `模型调用 ${vars.n} 次`,
-    statCost: '花费',
+    statCost: '参考价',
     statTurns: (vars: { n: number }) => `${vars.n} 轮对话`,
     quotaTitle: '账号额度',
     quotaPeriodWeekly: '每周用量',
@@ -130,28 +130,28 @@ export const panels = {
     colOutput: '输出',
     colTotal: '总 token',
     colCalls: '调用',
-    colCost: '花费',
+    colCost: '参考价',
     totalTitle: '全部会话累计',
     totalDesc: (vars: { count: number; missing: number }) =>
       `覆盖 ${vars.count} 个会话${vars.missing > 0 ? `，${vars.missing} 个无用量记录` : ''}`,
     totalDescLoading: '正在统计…',
     totalEmpty: '暂无可统计的用量记录。',
-    topTitle: '花销最高的会话',
+    topTitle: '参考价最高的会话',
     topDesc: (vars: { n: number }) => `前 ${vars.n} 名`,
     colSession: '会话',
     colTurns: '轮数',
     footnote:
-      '额度由 xAI 账号侧统计，与 token 计费口径相互独立：额度决定「还能用多少」，计费明细是「已经用了多少」。'
+      '每周额度决定还能用多少。美元是 token 牌价折算，包月不按这个数另扣。'
   },
   usageDialog: {
     title: '会话用量',
-    subtitle: '数据来自 grok 落盘的 usage.json（等价终端 grok usage，不受历史重放影响）',
+    subtitle: '包月按每周额度计。这里的美元是 token 牌价折算，不另扣月费。',
     refreshTitle: '刷新',
     closeTitle: '关闭 (Esc)',
     currentTitle: '当前会话',
     noSession:
       '未选中会话。请在左侧点选一个会话，或打开「设置 → 用量」查看账号额度与全部会话累计。',
-    noData: '这个会话还没有可结算的用量（尚未产生模型调用，或会话尚未落盘）。',
+    noData: '这个会话还没有用量记录（尚未产生模型调用，或会话尚未落盘）。',
     meta: (vars: { model: string; time: string; source: string }) =>
       `主模型 ${vars.model} · 统计时间 ${vars.time} · ${vars.source}`,
     sourceDisk: '来自 usage.json',
@@ -164,7 +164,7 @@ export const panels = {
     colOutput: '输出',
     colReasoning: '推理',
     colTotal: '总 token',
-    colCost: '花费'
+    colCost: '参考价'
   },
   version: {
     title: '版本与更新',

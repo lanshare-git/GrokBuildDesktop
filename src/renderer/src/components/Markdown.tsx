@@ -7,6 +7,8 @@ import ZoomableImage from './ZoomableImage'
 
 interface Props {
   text: string
+  /** 会话工作目录：markdown 里的相对图片路径按它解析 */
+  cwd?: string
 }
 
 /** 图片加载失败：回退成可点开的 URL 块（与正文裸链接同观感） */
@@ -38,10 +40,12 @@ function MarkdownImageFallback({ uri }: { uri: string }): JSX.Element {
  */
 function MarkdownImage({
   src,
-  alt
+  alt,
+  cwd
 }: {
   src?: string
   alt?: string
+  cwd?: string
 }): JSX.Element | null {
   const [resolved, setResolved] = useState<string | null | undefined>(undefined)
   const [broken, setBroken] = useState(false)
@@ -59,7 +63,7 @@ function MarkdownImage({
       return
     }
     void window.grok
-      .resolveAsset(src)
+      .resolveAsset(src, cwd)
       .then((url) => {
         if (!cancelled) setResolved(url || null)
       })
@@ -69,7 +73,7 @@ function MarkdownImage({
     return () => {
       cancelled = true
     }
-  }, [src])
+  }, [src, cwd])
 
   if (!src) return null
   if (broken || resolved === null) return <MarkdownImageFallback uri={src} />
@@ -95,7 +99,7 @@ function MarkdownImage({
  *
  * memo 的前提是 props 引用稳定：这里只传 text（字符串，按值比较），天然满足。
  */
-function MarkdownImpl({ text }: Props): JSX.Element {
+function MarkdownImpl({ text, cwd }: Props): JSX.Element {
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -113,7 +117,7 @@ function MarkdownImpl({ text }: Props): JSX.Element {
               {children}
             </a>
           ),
-          img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} />,
+          img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} cwd={cwd} />,
           pre: ({ children }) => <pre className="code-block">{children}</pre>
         }}
       >

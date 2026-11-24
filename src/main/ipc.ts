@@ -358,7 +358,9 @@ export function registerIpc(service: AgentService): void {
   )
 
   // 媒体资源地址归一化：本地 → grok-asset://；http(s) 主进程拉取后缓存再转 grok-asset（内网鉴权图）
-  ipcMain.handle(CH.assetResolve, (_e, rawUri: string) => resolveAssetUriAsync(rawUri))
+  ipcMain.handle(CH.assetResolve, (_e, rawUri: string, baseDir?: string) =>
+    resolveAssetUriAsync(rawUri, typeof baseDir === 'string' ? baseDir : undefined)
+  )
 
   /* ---------- MCP 服务器管理 ---------- */
   // 写操作后重启 agent，让新的 MCP 配置在长驻进程里生效（与代理改动的语义一致）。

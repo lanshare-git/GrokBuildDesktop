@@ -17,6 +17,6 @@ export const header = {
   modeTitleChat: '该会话由聊天搬来，已可按普通任务切换权限模式',
   modeTitle: (vars: { desc: string }) => `权限模式 · ${vars.desc}`,
   usageTitle: (vars: { input: number; output: number; cacheRead: number }) =>
-    `上一轮：输入 ${vars.input} · 输出 ${vars.output} · 缓存读 ${vars.cacheRead}\n点击查看本会话逐轮明细与全部会话累计`,
+    `上一轮：输入 ${vars.input} · 输出 ${vars.output} · 缓存读 ${vars.cacheRead}\n美元是 token 牌价折算，包月按每周额度计\n点击查看本会话逐轮明细与全部会话累计`,
   usageTitleEmpty: '用量：点击查看本会话逐轮明细与全部会话累计'
 }
